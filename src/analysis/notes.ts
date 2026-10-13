@@ -100,6 +100,8 @@ export function guessChord(chroma: Float32Array | number[], bassPc: number | nul
   let best: ChordGuess | null = null
   for (let root = 0; root < 12; root++) {
     for (const q of QUALITIES) {
+      // Two pitch classes can only honestly be a power chord.
+      if (present < 3 && q.suffix !== '5') continue
       let inside = 0
       const mask = new Array(12).fill(false)
       for (const t of q.tones) {

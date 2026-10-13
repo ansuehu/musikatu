@@ -3,6 +3,17 @@ import { colors, drawRuler, drawWave, markerColors } from '../waveform/draw'
 import type { Peaks } from '../waveform/peaks'
 import type { Selection, View } from '../types'
 import { measureNumbers, type Marker } from '../project'
+import { segmentAt, type ChordSegment } from '../analysis/chordTimeline'
+
+/** Chord chart shown in a lane under the ruler; `labels` are display names per segment. */
+export interface ChordLane {
+  segments: ChordSegment[]
+  labels: string[]
+  /** Changes whenever segments or labels do (cache key). */
+  version: string
+  /** Shown in the lane while there is no chart yet. */
+  placeholder?: string
+}
 
 interface Props {
   peaks: Peaks
@@ -22,11 +33,17 @@ interface Props {
   onMarkerMove: (id: string, pos: number) => void
   onMarkerEdit: (id: string) => void
   onWidth: (cssWidth: number) => void
+  chordLane: ChordLane | null
+  onChordClick: (index: number) => void
+  onChordDoubleClick: (index: number) => void
 }
 
 const MARKER_LANE_H = 18
 const RULER_H = 22
-const HEADER_H = MARKER_LANE_H + RULER_H
+const CHORD_LANE_H = 22
+/** Marker lane + ruler. */
+const TOP_H = MARKER_LANE_H + RULER_H
+const HEADER_H = TOP_H + CHORD_LANE_H
 const EDGE_PX = 6
 const DRAG_PX = 3
 const KIND_PRIORITY = { section: 0, measure: 1, beat: 2 } as const
@@ -93,8 +110,10 @@ export function WaveformView(props: Props) {
       }
 
       const laneH = Math.round(MARKER_LANE_H * dpr)
+      const topH = Math.round(TOP_H * dpr)
       const headerH = Math.round(HEADER_H * dpr)
-      const key = `${p.peaks.id}|${start}|${spp}|${W}|${H}`
+      const lane = p.chordLane
+      const key = `${p.peaks.id}|${start}|${spp}|${W}|${H}|${lane?.version ?? ''}|${lane?.placeholder ?? ''}`
       if (key !== cacheKey) {
         cache.width = W
         cache.height = H
@@ -105,13 +124,15 @@ export function WaveformView(props: Props) {
         cg.fillRect(0, 0, W, laneH)
         cg.save()
         cg.translate(0, laneH)
-        drawRuler(cg, W, headerH - laneH, start, spp / dpr, p.peaks.sampleRate, dpr)
+        drawRuler(cg, W, topH - laneH, start, spp / dpr, p.peaks.sampleRate, dpr)
         cg.restore()
+        drawChordLane(cg, lane, topH, headerH - topH, W, start, spp / dpr, dpr)
         drawWave(cg, p.peaks, 0, headerH, W, H - headerH, start, spp / dpr, dpr)
         cacheKey = key
       }
       const sel = p.selection
-      const fk = `${key}|${pos}|${sel?.start}|${sel?.end}|${p.loopOn}|${markerVersion}|${p.selectedMarker}`
+      const chordIdx = lane ? segmentAt(lane.segments, pos) : -1
+      const fk = `${key}|${chordIdx}|${pos}|${sel?.start}|${sel?.end}|${p.loopOn}|${markerVersion}|${p.selectedMarker}`
       if (fk === frameKey) return
       frameKey = fk
 
@@ -142,6 +163,16 @@ export function WaveformView(props: Props) {
           g.fillStyle = m.kind === 'section' ? '#140d22' : '#0d0f13'
           g.fillText(label, x + 4 * dpr, laneH / 2 + 0.5)
         }
+      }
+
+      // current chord: outline it in the lane
+      if (lane && chordIdx >= 0 && lane.segments[chordIdx].chord) {
+        const seg = lane.segments[chordIdx]
+        const x0 = Math.max(0, Math.round(toX(seg.start)))
+        const x1 = Math.min(W, Math.round(toX(seg.end)))
+        g.strokeStyle = colors.loopEdge
+        g.lineWidth = Math.max(1, Math.round(1.5 * dpr))
+        g.strokeRect(x0 + dpr, topH + dpr, x1 - x0 - 2 * dpr, headerH - topH - 2 * dpr)
       }
 
       if (sel) {
@@ -212,7 +243,7 @@ export function WaveformView(props: Props) {
 
   /** Marker under a point in the marker lane / ruler, preferring sections, then nearest. */
   const markerAt = (x: number, y: number): Marker | null => {
-    if (y > HEADER_H) return null
+    if (y > TOP_H) return null
     const { markers, view } = latest.current
     let best: Marker | null = null
     let bestScore = Infinity
@@ -231,6 +262,14 @@ export function WaveformView(props: Props) {
     return best
   }
 
+  /** Chord segment under a point in the chord lane. */
+  const chordAt = (x: number, y: number): number | null => {
+    const { chordLane, view } = latest.current
+    if (!chordLane || y <= TOP_H || y > HEADER_H) return null
+    const i = segmentAt(chordLane.segments, view.start + x * view.spp)
+    return i >= 0 && chordLane.segments[i].chord ? i : null
+  }
+
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -238,6 +277,11 @@ export function WaveformView(props: Props) {
     const marker = markerAt(x, y)
     if (marker) {
       drag.current = { mode: 'marker', id: marker.id, x0: x, moved: false }
+      return
+    }
+    const chord = chordAt(x, y)
+    if (chord !== null) {
+      latest.current.onChordClick(chord)
       return
     }
     const fixed = y > HEADER_H ? edgeAt(x) : null
@@ -248,7 +292,7 @@ export function WaveformView(props: Props) {
     const { x, y, sample } = local(e)
     const d = drag.current
     if (!d) {
-      e.currentTarget.style.cursor = markerAt(x, y) ? 'grab' : y > HEADER_H && edgeAt(x) !== null ? 'ew-resize' : y <= HEADER_H ? 'pointer' : 'text'
+      e.currentTarget.style.cursor = markerAt(x, y) ? 'grab' : chordAt(x, y) !== null ? 'pointer' : y > HEADER_H && edgeAt(x) !== null ? 'ew-resize' : y <= HEADER_H ? 'pointer' : 'text'
       return
     }
     if (d.mode === 'marker') {
@@ -280,7 +324,9 @@ export function WaveformView(props: Props) {
   const onDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y, sample } = local(e)
     const marker = markerAt(x, y)
+    const chord = chordAt(x, y)
     if (marker) latest.current.onMarkerEdit(marker.id)
+    else if (chord !== null) latest.current.onChordDoubleClick(chord)
     else if (y > HEADER_H) latest.current.onSelectBetweenMarkers(sample)
   }
 
@@ -296,4 +342,44 @@ export function WaveformView(props: Props) {
       />
     </div>
   )
+}
+
+function drawChordLane(g: CanvasRenderingContext2D, lane: ChordLane | null, y: number, h: number, W: number, start: number, spp: number, dpr: number): void {
+  g.fillStyle = colors.chordLane
+  g.fillRect(0, y, W, h)
+  g.fillStyle = colors.axis
+  g.fillRect(0, y + h - 1, W, 1)
+  g.font = `600 ${11 * dpr}px Inter, system-ui, sans-serif`
+  g.textBaseline = 'middle'
+  if (!lane || lane.segments.length === 0) {
+    if (lane?.placeholder) {
+      g.fillStyle = colors.rulerText
+      g.fillText(lane.placeholder, 8 * dpr, y + h / 2)
+    }
+    return
+  }
+  const end = start + W * spp
+  const first = Math.max(0, segmentAt(lane.segments, start))
+  for (let i = first; i < lane.segments.length; i++) {
+    const seg = lane.segments[i]
+    if (seg.start > end) break
+    if (seg.end < start || !seg.chord) continue
+    const x0 = Math.round((seg.start - start) / spp)
+    const x1 = Math.round((seg.end - start) / spp)
+    g.fillStyle = i % 2 ? colors.chordBlockAlt : colors.chordBlock
+    g.fillRect(x0 + dpr, y + 2 * dpr, x1 - x0 - 2 * dpr, h - 4 * dpr)
+    const label = lane.labels[i]
+    const tw = g.measureText(label).width
+    // a cut-off name ("Cr") misleads; leave short blocks unlabelled until you zoom in
+    if (Math.min(x1, W) - Math.max(x0, 0) < tw + 10 * dpr) continue
+    g.save()
+    g.beginPath()
+    g.rect(x0 + 2 * dpr, y, x1 - x0 - 4 * dpr, h)
+    g.clip()
+    g.fillStyle = colors.chordText
+    // keep the label visible when the block starts left of the view
+    const tx = Math.max(x0 + 5 * dpr, Math.min(5 * dpr, x1 - tw - 5 * dpr))
+    g.fillText(label, tx, y + h / 2 + 0.5)
+    g.restore()
+  }
 }

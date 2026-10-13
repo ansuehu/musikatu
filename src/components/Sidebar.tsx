@@ -8,7 +8,7 @@ import { markerColors } from '../waveform/draw'
 import type { Selection } from '../types'
 import { Btn, Slider } from './Controls'
 
-export type SidebarTab = 'stems' | 'markers' | 'loops' | 'eq' | 'mix'
+export type SidebarTab = 'stems' | 'chords' | 'markers' | 'loops' | 'eq' | 'mix'
 
 interface Props {
   tab: SidebarTab
@@ -43,11 +43,13 @@ interface Props {
   onChannelMode: (m: ChannelMode) => void
   channels: number
   stemsPanel: ReactNode
+  chordsPanel: ReactNode
   stemsActive: boolean
 }
 
 const TABS: { id: SidebarTab; label: string }[] = [
   { id: 'stems', label: 'Stems' },
+  { id: 'chords', label: 'Chords' },
   { id: 'markers', label: 'Markers' },
   { id: 'loops', label: 'Loops' },
   { id: 'eq', label: 'EQ' },
@@ -72,6 +74,7 @@ export function Sidebar(p: Props) {
       </nav>
       <div className="tab-body">
         {p.tab === 'stems' && p.stemsPanel}
+        {p.tab === 'chords' && p.chordsPanel}
         {p.tab === 'markers' && <MarkersTab {...p} />}
         {p.tab === 'loops' && <LoopsTab {...p} />}
         {p.tab === 'eq' && <EqTab {...p} />}

@@ -564,12 +564,15 @@ input[type='radio'] {
 }
 .tabs {
   display: flex;
-  gap: 2px;
-  padding: 8px 8px 0;
+  gap: 1px;
+  padding: 8px 6px 0;
   border-bottom: 1px solid var(--border);
 }
 .btn.tab {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 2px;
+  font-size: 12px;
   height: 32px;
   border-radius: 6px 6px 0 0;
   border-bottom: none;
@@ -585,8 +588,8 @@ input[type='radio'] {
 .btn.tab.dot::after {
   content: '';
   position: absolute;
-  top: 7px;
-  right: 9px;
+  top: 5px;
+  right: 4px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -1169,4 +1172,85 @@ input[type='range']:disabled {
   border-radius: 4px;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   font-size: 11px;
+}
+
+/* ---------- chords tab ---------- */
+.chords-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chords-settings {
+  display: grid;
+  gap: 6px;
+}
+.field {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.field .select {
+  width: 100%;
+  min-width: 0;
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.diagram-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.diagram-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.diagram-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.diagram-card .chord-diagram {
+  width: 100%;
+  height: auto;
+}
+.diagram-name {
+  font-weight: 700;
+  color: var(--loop);
+  font-size: 13px;
+}
+.no-shape {
+  padding: 30px 0;
+}
+.chord-list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+.chord-list li {
+  gap: 6px;
+  padding: 2px 4px;
+}
+.chord-input {
+  font-weight: 600;
+  color: var(--loop);
+}
+.chord-input.bad {
+  border-color: var(--danger) !important;
+}
+.chord-list .dur {
+  width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

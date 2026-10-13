@@ -59,6 +59,19 @@ npm run dist:dir         # unpacked app only, quick to check
   - Soloing one stem shows its waveform, and the spectrum, note and chord detection follow what you hear.
 - Stems are cached per song (16-bit WAV) and reload instantly; the mixer settings are saved with the project. *Export WAVs…* writes the six stems anywhere.
 
+**Chord chart (Chords tab and the chord row above the waveform)**
+- Every song is charted automatically in about a second, in a background worker. Once stems exist, it re-charts from the instruments only (no vocals or drums), which is cleaner.
+- How it works: chroma (pitch-class profile) every 0.2 s, scored against chord templates, then decoded with Viterbi and a change penalty. Chords change only when the music clearly does, and silence becomes N.C.
+- Vocabulary: Simple (major/minor), Standard (+ 7ths, sus, dim, power) or Full.
+- **Chord row:** click a chord to jump to it, double-click to select it (then `L` loops it). `<` / `>` step through chords and `C` selects the current one.
+- **Chords tab:**
+  - guitar diagrams of every chord in the song (capo-aware; click one to hear it)
+  - the progression, following the playhead
+  - type over any chord to correct it (`Am7`, `F#m7b5`, `Bb/D`, `N.C.`); *Split at playhead* inserts a change
+  - copy or save a text chord sheet
+- Corrections are saved with the song and never overwritten automatically.
+- Names follow what you hear: they include the pitch shift, the instrument transposition and your spelling choice.
+
 **Guitar chord diagrams**
 - The current chord guess is drawn as a guitar chord box: muted and open strings, finger numbers, barres, the position label (e.g. "6fr"), root notes highlighted, and note names under the strings.
 - Familiar open and barre shapes are shown first. Other voicings come from a fretboard search that covers all 16 chord qualities in every key, slash chords included. Use ‹ › to step through up to four voicings across the neck.
@@ -88,7 +101,7 @@ npm run dist:dir         # unpacked app only, quick to check
 | --- | --- |
 | `Space` play/pause · `S` stop · `Home` to start | `←`/`→` ±1 s · `Shift+←/→` ±5 s · `,`/`.` previous/next marker |
 | `L` loop on/off · `Shift+L` save loop · `1`–`9` recall · `Esc` clear | `H` half speed · `[`/`]` speed ±5% · `Shift+↑/↓` pitch ±1 st |
-| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
+| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
 
 ## Stem separation: performance
 

@@ -18,6 +18,10 @@ export const colors = {
   viewport: 'rgba(255, 255, 255, 0.08)',
   viewportEdge: 'rgba(255, 255, 255, 0.45)',
   markerSelected: '#ffffff',
+  chordLane: '#10131a',
+  chordBlock: 'rgba(255, 181, 71, 0.13)',
+  chordBlockAlt: 'rgba(255, 181, 71, 0.07)',
+  chordText: '#ffd28a',
 }
 
 export const markerColors = {

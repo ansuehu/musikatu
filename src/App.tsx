@@ -18,6 +18,11 @@ import { useMidi } from './midi'
 import { useStems } from './stems/useStems'
 import { StemsTab } from './components/StemsTab'
 import { DEFAULT_STEM_MIX, STEM_NAMES, soloStem, stemGains, type StemMix } from './stems/types'
+import { ChordsTab } from './components/ChordsTab'
+import { useChordTrack, type ChordTrack } from './analysis/useChordTrack'
+import { mergeShort, segmentAt, type Chord } from './analysis/chordTimeline'
+import { chordName, parseChordName } from './analysis/notes'
+import type { ChordLane } from './components/WaveformView'
 import type { AudioFilePayload, Selection, View } from './types'
 
 interface LoadedFile {
@@ -94,6 +99,7 @@ export default function App() {
   const [eq, setEq] = useState<EqState>(FLAT_EQ)
   const [channelMode, setChannelMode] = useState<ChannelMode>('stereo')
   const [stemMix, setStemMix] = useState<StemMix>(DEFAULT_STEM_MIX)
+  const [chordTrack, setChordTrack] = useState<ChordTrack | null>(null)
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null)
   const [editMarkerRequest, setEditMarkerRequest] = useState<{ id: string; n: number } | null>(null)
   const [activeLoop, setActiveLoop] = useState<string | null>(null)
@@ -166,10 +172,10 @@ export default function App() {
 
   useEffect(() => {
     if (!projectId) return
-    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix }
+    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined }
     const t = setTimeout(() => void saveProject(projectId, data), 400)
     return () => clearTimeout(t)
-  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix])
+  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack])
 
   // ---- view (zoom / scroll) ----
   const clampView = useCallback(
@@ -223,6 +229,7 @@ export default function App() {
         setSemitones(saved?.semitones ?? 0)
         setCents(saved?.cents ?? 0)
         setStemMix(saved?.stemMix ?? DEFAULT_STEM_MIX)
+        setChordTrack(saved?.chordTrack ?? null)
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
         setStatus(restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null)
@@ -439,6 +446,54 @@ export default function App() {
       .map((s) => ({ id: s.name, channels: Array.from({ length: s.buffer.numberOfChannels }, (_, c) => s.buffer.getChannelData(c)), gain: g[s.name] }))
   }, [stems, stemMix])
 
+  // ---- whole-song chord chart ----
+  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrack, a4 })
+  // Names follow what you hear: the pitch shift (rounded) plus the instrument transposition.
+  const pitchShift = Math.round(semitones + cents / 100)
+  const chordLabel = useCallback(
+    (c: Chord) => chordName({ ...c, root: c.root + pitchShift, bass: c.bass === null ? null : c.bass + pitchShift, score: 0 }, transpose, spelling),
+    [pitchShift, transpose, spelling],
+  )
+  const parseChord = useCallback(
+    (text: string): Chord | null | undefined => {
+      const c = parseChordName(text)
+      if (!c) return c
+      const back = (pc: number) => (((pc - pitchShift - transpose) % 12) + 12) % 12
+      return { root: back(c.root), suffix: c.suffix, bass: c.bass === null ? null : back(c.bass) }
+    },
+    [pitchShift, transpose],
+  )
+  const chordLane = useMemo((): ChordLane | null => {
+    if (!file) return null
+    const segs = chordTrack?.segments ?? []
+    const labels = segs.map((s) => (s.chord ? chordLabel(s.chord) : ''))
+    const placeholder = chords.status.kind === 'running' ? `Analysing chords… ${Math.round(chords.status.fraction * 100)}%` : undefined
+    return { segments: segs, labels, version: `${segs.length}|${segs[segs.length - 1]?.end}|${labels.join(',')}`, placeholder: segs.length ? undefined : placeholder }
+  }, [file, chordTrack, chordLabel, chords.status])
+
+  const editChords = useCallback((fn: (segs: ChordTrack['segments']) => ChordTrack['segments']) => {
+    setChordTrack((t) => (t ? { ...t, segments: mergeShort(fn(t.segments.map((s) => ({ ...s }))), 0), edited: true } : t))
+  }, [])
+  const selectChordSpan = useCallback(
+    (i: number) => {
+      const seg = chordTrack?.segments[i]
+      if (seg) onSelect({ start: seg.start, end: seg.end }, true)
+    },
+    [chordTrack, onSelect],
+  )
+  const jumpChord = useCallback(
+    (dir: -1 | 1) => {
+      const segs = chordTrack?.segments
+      if (!engine || !segs?.length) return
+      const pos = engine.position
+      const i = segmentAt(segs, pos)
+      // "previous" from inside a chord first returns to its start, like a CD player
+      const target = dir > 0 ? segs[Math.min(segs.length - 1, i + 1)] : pos - (segs[i]?.start ?? 0) > sampleRate * 0.5 ? segs[i] : segs[Math.max(0, i - 1)]
+      if (target) engine.seek(target.start)
+    },
+    [chordTrack, engine, sampleRate],
+  )
+
   const eqWeights = useMemo(() => {
     const active = eq.enabled && (eq.gains.some((g) => g !== 0) || eq.highpass.on || eq.lowpass.on)
     if (!engine || !active) return null
@@ -492,6 +547,13 @@ export default function App() {
         case 'zoomFit': return fit()
         case 'follow': return setFollow((f) => !f)
         case 'toggleStems': return setStemMix((m) => ({ ...m, enabled: !m.enabled }))
+        case 'prevChord': return jumpChord(-1)
+        case 'nextChord': return jumpChord(1)
+        case 'selectChord': {
+          const i = chordTrack && engine ? segmentAt(chordTrack.segments, engine.position) : -1
+          if (i >= 0) selectChordSpan(i)
+          return
+        }
       }
     },
     [loops, recallLoop, togglePlay, stop, jump, toStart, jumpMarker, toggleLoop, saveLoop, speed, changeSpeed, tap, addMarker, deleteMarker, selectedMarker, zoom, fit],
@@ -628,6 +690,12 @@ export default function App() {
                   setEditMarkerRequest({ id, n: Date.now() })
                 }}
                 onWidth={setDetailWidth}
+                chordLane={chordLane}
+                onChordClick={(i) => {
+                  const seg = chordTrack?.segments[i]
+                  if (seg) engine?.seek(seg.start)
+                }}
+                onChordDoubleClick={selectChordSpan}
               />
             </>
           ) : (
@@ -712,6 +780,54 @@ export default function App() {
             onChannelMode={setChannelMode}
             channels={file?.buffer.numberOfChannels ?? 2}
             stemsActive={stemsActive}
+            chordsPanel={
+              <ChordsTab
+                track={chordTrack}
+                status={chords.status}
+                hasFile={!!file}
+                hasStems={!!stems}
+                sampleRate={sampleRate}
+                fileName={file?.name ?? null}
+                getPosition={getPosition}
+                label={chordLabel}
+                parse={parseChord}
+                pitchShift={pitchShift}
+                spelling={spelling}
+                capo={capo}
+                a4={a4}
+                engine={engine}
+                onRun={(source, vocabulary) => chords.run(source, vocabulary)}
+                onEdit={(i, chord) => editChords((segs) => ((segs[i].chord = chord), segs))}
+                onDelete={(i) =>
+                  editChords((segs) => {
+                    if (segs.length < 2) return segs
+                    if (i > 0) segs[i - 1].end = segs[i].end
+                    else segs[1].start = segs[0].start
+                    segs.splice(i, 1)
+                    return segs
+                  })
+                }
+                onSplit={() =>
+                  editChords((segs) => {
+                    const pos = Math.round(engine?.position ?? 0)
+                    const i = segmentAt(segs, pos)
+                    if (i < 0 || pos - segs[i].start < sampleRate * 0.1 || segs[i].end - pos < sampleRate * 0.1) return segs
+                    // mergeShort would re-join two identical halves, so mark the new half as "no chord" for the user to name
+                    segs.splice(i + 1, 0, { ...segs[i], start: pos, chord: null })
+                    segs[i].end = pos
+                    return segs
+                  })
+                }
+                onSeek={(i) => {
+                  const seg = chordTrack?.segments[i]
+                  if (seg) engine?.seek(seg.start)
+                }}
+                onLoop={(i) => {
+                  selectChordSpan(i)
+                  setLoopOn(true)
+                }}
+              />
+            }
             stemsPanel={
               <StemsTab
                 ctl={stemsCtl}

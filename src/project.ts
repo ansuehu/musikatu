@@ -30,6 +30,8 @@ export interface ProjectData {
   cents: number
   /** Stem mixer settings, when the file has been separated. */
   stemMix?: import('./stems/types').StemMix
+  /** Whole-song chord chart (possibly hand-corrected). */
+  chordTrack?: import('./analysis/useChordTrack').ChordTrack
 }
 
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Breakdown', 'Outro']

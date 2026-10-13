@@ -134,6 +134,12 @@ export interface NoteEstimate {
   chord: ChordGuess | null
   /** Strongest spectral peak, with its deviation from equal temperament. */
   peak: { freq: number; midi: number; cents: number } | null
+  /** Salience of the detected notes folded to pitch classes (C = 0). */
+  chroma: Float32Array
+  /** Pitch class of the lowest detected note. */
+  bass: number | null
+  /** Loudest fundamental, linear (≈1 for a full-scale sine); used to tell music from silence. */
+  level: number
 }
 
 const HARMONIC_WEIGHTS = [1, 0.5, 0.33, 0.25, 0.2]
@@ -163,7 +169,7 @@ export function estimateNotes(mags: Float32Array, binHz: number, a4 = 440): Note
   }
 
   const energy = new Float32Array(128)
-  const result: NoteEstimate = { energy, notes: [], chord: null, peak: null }
+  const result: NoteEstimate = { energy, notes: [], chord: null, peak: null, chroma: new Float32Array(12), bass: null, level: maxFund }
   // Below roughly -66 dBFS there's nothing worth naming.
   if (maxFund < 5e-4) return result
 
@@ -194,6 +200,8 @@ export function estimateNotes(mags: Float32Array, binHz: number, a4 = 440): Note
   if (notes.length > 0) {
     const chroma = new Float32Array(12)
     for (const n of notes) chroma[n % 12] += sal[n]
+    result.chroma = chroma
+    result.bass = notes[0] % 12
     result.chord = notes.length >= 2 ? guessChord(chroma, notes[0] % 12) : null
   }
 
@@ -211,4 +219,46 @@ export function estimateNotes(mags: Float32Array, binHz: number, a4 = 440): Note
     result.peak = { freq, midi, cents: (exact - midi) * 100 }
   }
   return result
+}
+
+// ---------- chord names typed by the user ----------
+
+const SUFFIX_ALIASES: Record<string, string> = {
+  '': '', maj: '', M: '', major: '',
+  m: 'm', min: 'm', '-': 'm', minor: 'm',
+  '7': '7', dom7: '7',
+  maj7: 'maj7', M7: 'maj7', 'Δ': 'maj7', 'Δ7': 'maj7', ma7: 'maj7',
+  m7: 'm7', min7: 'm7', '-7': 'm7',
+  '6': '6', m6: 'm6',
+  m7b5: 'm7♭5', 'm7♭5': 'm7♭5', 'ø': 'm7♭5', 'ø7': 'm7♭5',
+  dim: 'dim', '°': 'dim', o: 'dim',
+  dim7: 'dim7', '°7': 'dim7', o7: 'dim7',
+  aug: 'aug', '+': 'aug',
+  sus2: 'sus2', sus4: 'sus4', sus: 'sus4',
+  '7sus4': '7sus4', '7sus': '7sus4',
+  add9: 'add9', '5': '5',
+}
+
+const LETTERS: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
+
+function parsePc(letter: string, accidental: string): number {
+  const acc = accidental === '#' || accidental === '♯' ? 1 : accidental === 'b' || accidental === '♭' ? -1 : 0
+  return (LETTERS[letter.toUpperCase()] + acc + 12) % 12
+}
+
+/**
+ * Parses names like "Am7", "F#m7b5", "Bb/D", "Cmaj7", "N.C.". Unknown qualities are kept
+ * verbatim (e.g. "7#9") so the user can write anything; returns undefined if it isn't a chord.
+ * `null` means "no chord".
+ */
+export function parseChordName(text: string): { root: number; suffix: string; bass: number | null } | null | undefined {
+  const t = text.trim()
+  if (/^(n\.?c\.?|-|—|none)$/i.test(t)) return null
+  const m = /^([A-Ga-g])([#b♯♭]?)([^/]*?)(?:\/([A-Ga-g])([#b♯♭]?))?$/.exec(t)
+  if (!m) return undefined
+  const root = parsePc(m[1], m[2])
+  const raw = m[3].trim()
+  const suffix = SUFFIX_ALIASES[raw] ?? raw.replace(/b(?=\d)/g, '♭').replace(/#(?=\d)/g, '♯')
+  const bass = m[4] ? parsePc(m[4], m[5]) : null
+  return { root, suffix, bass: bass === root ? null : bass }
 }

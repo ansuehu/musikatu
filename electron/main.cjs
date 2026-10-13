@@ -70,7 +70,6 @@ async function setMenuBarHidden(hidden) {
   menuBarHidden = hidden
   applyMenuBar()
   buildMenu() // keep the View ▸ Show Menu Bar checkbox in step
-  win?.webContents.send('ui:menuBar', menuBarHidden)
   try {
     const file = uiSettingsPath()
     const current = await fs.readFile(file, 'utf8').then(JSON.parse, () => ({}))
@@ -79,9 +78,6 @@ async function setMenuBarHidden(hidden) {
     console.warn('Could not save the menu bar setting:', err)
   }
 }
-
-ipcMain.handle('ui:menuBarHidden', () => (process.platform === 'darwin' ? null : menuBarHidden))
-ipcMain.handle('ui:setMenuBarHidden', (_e, hidden) => setMenuBarHidden(!!hidden))
 
 function createWindow() {
   win = new BrowserWindow({

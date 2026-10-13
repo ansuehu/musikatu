@@ -24,10 +24,6 @@ contextBridge.exposeInMainWorld('api', {
   onGlobalShortcut: (callback) => subscribe('shortcuts:triggered', callback),
   onMenu: (callback) => subscribe('menu', callback),
   onFileOpened: (callback) => subscribe('file:opened', callback),
-  /** null on macOS (no window menu bar there). */
-  menuBarHidden: () => ipcRenderer.invoke('ui:menuBarHidden'),
-  setMenuBarHidden: (hidden) => ipcRenderer.invoke('ui:setMenuBarHidden', hidden),
-  onMenuBar: (callback) => subscribe('ui:menuBar', callback),
   beats: {
     track: (mono) => ipcRenderer.invoke('beats:track', mono),
     onProgress: (callback) => subscribe('stems:event', (e) => e.type === 'beatsProgress' && callback(e.fraction)),

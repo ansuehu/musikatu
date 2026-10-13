@@ -1,5 +1,5 @@
 import { Btn, Slider } from './Controls'
-import { FolderIcon, MenuBarIcon, VolumeIcon } from './Icons'
+import { FolderIcon, VolumeIcon } from './Icons'
 import { formatTime } from '../waveform/draw'
 import { TRANSPOSITIONS, type Spelling } from '../analysis/notes'
 
@@ -22,9 +22,6 @@ interface Props {
   onSpelling: (s: Spelling) => void
   onShortcuts: () => void
   sidebarOpen: boolean
-  /** null when the platform has no window menu bar */
-  menuBarHidden: boolean | null
-  onMenuBar: (hidden: boolean) => void
   onSidebar: (open: boolean) => void
   disabled: boolean
 }
@@ -87,16 +84,6 @@ export function TopBar(p: Props) {
         <Slider min={0} max={1.5} step={0.01} value={p.volume} onChange={(e) => p.onVolume(+e.target.value)} />
         <span className="value">{Math.round(p.volume * 100)}%</span>
       </label>
-      {p.menuBarHidden !== null && (
-        <Btn
-          className={p.menuBarHidden ? '' : 'on'}
-          onClick={() => p.onMenuBar(!p.menuBarHidden)}
-          title={p.menuBarHidden ? 'Show the File / Edit / View menu bar (Ctrl+Shift+M; Alt shows it briefly)' : 'Hide the File / Edit / View menu bar (Ctrl+Shift+M)'}
-          aria-pressed={!p.menuBarHidden}
-        >
-          <MenuBarIcon />
-        </Btn>
-      )}
       <Btn onClick={p.onShortcuts} title="Keyboard, global hotkey and MIDI pedal shortcuts (Ctrl+,)">
         ⌨
       </Btn>

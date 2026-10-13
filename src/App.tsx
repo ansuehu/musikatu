@@ -141,7 +141,6 @@ export default function App() {
   const [timbre, setTimbre] = useState<Timbre>(initialPrefs.timbre)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(initialPrefs.sidebarTab)
   const [sidebarOpen, setSidebarOpen] = useState(initialPrefs.sidebarOpen)
-  const [menuBarHidden, setMenuBarHidden] = useState<boolean | null>(null)
   const [showGuitar, setShowGuitar] = useState(initialPrefs.showGuitar)
   const [capo, setCapo] = useState(initialPrefs.capo)
   // Older saved prefs only had { on, volume }; fill in the sound settings.
@@ -209,14 +208,6 @@ export default function App() {
   }, [engine, loopOn, selection, length])
 
   const getPosition = useCallback(() => engine?.position ?? 0, [engine])
-
-  // ---- window menu bar (File / Edit / View) ----
-  useEffect(() => {
-    const api = window.api
-    if (!api) return
-    void api.menuBarHidden().then(setMenuBarHidden)
-    return api.onMenuBar(setMenuBarHidden)
-  }, [])
 
   // ---- persistence ----
   useEffect(() => {
@@ -870,8 +861,6 @@ export default function App() {
         onSpelling={setSpelling}
         onShortcuts={() => setShortcutsOpen(true)}
         sidebarOpen={sidebarOpen}
-        menuBarHidden={menuBarHidden}
-        onMenuBar={(hidden) => void window.api?.setMenuBarHidden(hidden)}
         onSidebar={setSidebarOpen}
         disabled={disabled}
       />

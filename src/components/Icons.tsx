@@ -49,14 +49,6 @@ export const MetronomeIcon = () => (
     <path d="M7.5 15h9" />
   </svg>
 )
-/** A window with a menu strip along the top. */
-export const MenuBarIcon = () => (
-  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    <path d="M3 9h18" />
-    <path d="M6.5 6.5h2M10.5 6.5h2M14.5 6.5h2" strokeLinecap="round" strokeWidth="1.6" />
-  </svg>
-)
 export const FolderIcon = () => (
   <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />

@@ -94,14 +94,17 @@
       "category": "Audio",
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "tar.gz"
       ],
       "files": [
         "!node_modules/onnxruntime-node/bin/**/win32/**",
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
       ],
       "icon": "build/icon.png",
-      "executableName": "earwork-ai"
+      "executableName": "earwork-ai",
+      "maintainer": "Andoni Sudupe <andonisudupeehu@gmail.com>",
+      "synopsis": "Music transcription workbench with on-device AI stem separation"
     },
     "asarUnpack": [
       "node_modules/onnxruntime-node/**"
@@ -110,5 +113,6 @@
   "dependencies": {
     "onnxruntime-node": "^1.30.0"
   },
-  "desktopName": "earwork-ai.desktop"
+  "desktopName": "earwork-ai.desktop",
+  "homepage": "mailto:andonisudupeehu@gmail.com"
 }

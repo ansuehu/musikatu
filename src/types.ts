@@ -31,6 +31,10 @@ declare global {
       onGlobalShortcut(callback: (action: string) => void): () => void
       onMenu(callback: (command: 'open' | 'shortcuts') => void): () => void
       onFileOpened(callback: (file: AudioFilePayload) => void): () => void
+      /** Whether the window's File/Edit/View menu bar is hidden; null where there is none (macOS). */
+      menuBarHidden(): Promise<boolean | null>
+      setMenuBarHidden(hidden: boolean): Promise<void>
+      onMenuBar(callback: (hidden: boolean) => void): () => void
       stems: import('./stems/types').StemsApi
       notes: {
         /** Mono 22.05 kHz audio → Basic Pitch frame and onset activations (frames × 88, row-major). */

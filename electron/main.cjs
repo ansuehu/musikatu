@@ -50,6 +50,39 @@ async function readAudio(filePath) {
   return { name: path.basename(filePath), path: filePath, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) }
 }
 
+// ---- menu bar visibility (Linux / Windows; macOS has no per-window menu bar) ----
+const uiSettingsPath = () => path.join(app.getPath('userData'), 'ui-settings.json')
+let menuBarHidden = false
+try {
+  menuBarHidden = !!JSON.parse(require('node:fs').readFileSync(uiSettingsPath(), 'utf8')).menuBarHidden
+} catch {
+  /* first run */
+}
+
+/** Hidden = auto-hide: Alt still reveals the menu, and its shortcuts keep working. */
+function applyMenuBar() {
+  if (!win || process.platform === 'darwin') return
+  win.setAutoHideMenuBar(menuBarHidden)
+  win.setMenuBarVisibility(!menuBarHidden)
+}
+
+async function setMenuBarHidden(hidden) {
+  menuBarHidden = hidden
+  applyMenuBar()
+  buildMenu() // keep the View ▸ Show Menu Bar checkbox in step
+  win?.webContents.send('ui:menuBar', menuBarHidden)
+  try {
+    const file = uiSettingsPath()
+    const current = await fs.readFile(file, 'utf8').then(JSON.parse, () => ({}))
+    await fs.writeFile(file, JSON.stringify({ ...current, menuBarHidden }, null, 2))
+  } catch (err) {
+    console.warn('Could not save the menu bar setting:', err)
+  }
+}
+
+ipcMain.handle('ui:menuBarHidden', () => (process.platform === 'darwin' ? null : menuBarHidden))
+ipcMain.handle('ui:setMenuBarHidden', (_e, hidden) => setMenuBarHidden(!!hidden))
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -59,6 +92,7 @@ function createWindow() {
     backgroundColor: '#0d0f13',
     title: 'Musikatu',
     icon: path.join(__dirname, 'icon.png'),
+    autoHideMenuBar: menuBarHidden,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -69,6 +103,7 @@ function createWindow() {
   const devUrl = process.env.VITE_DEV_SERVER_URL
   if (devUrl) win.loadURL(devUrl)
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+  applyMenuBar()
   win.on('closed', () => (win = null))
 }
 
@@ -93,7 +128,24 @@ function buildMenu() {
     { role: 'editMenu' },
     {
       label: 'View',
-      submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'togglefullscreen' }],
+      submenu: [
+        ...(isMac
+          ? []
+          : [
+              {
+                label: 'Show Menu Bar',
+                type: 'checkbox',
+                checked: !menuBarHidden,
+                accelerator: 'CmdOrCtrl+Shift+M',
+                click: () => void setMenuBarHidden(!menuBarHidden),
+              },
+              { type: 'separator' },
+            ]),
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
     },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))

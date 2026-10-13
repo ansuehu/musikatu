@@ -143,6 +143,12 @@ npm run dist:dir         # unpacked app only, quick to check
 **Per-file memory**
 - Markers, loops, EQ, channel mode, speed and pitch are saved automatically for each file under the app's user-data folder.
 
+**Window**
+- **Hide or show the File / Edit / View menu bar:** the window button at the right of the top bar, *View ▸ Show Menu Bar*, or `Ctrl+Shift+M`.
+  - While hidden, `Alt` shows it briefly, and its shortcuts (e.g. `Ctrl+O`) keep working.
+  - The choice is remembered.
+  - Linux and Windows only: macOS has no per-window menu bar.
+
 ## Default keys
 
 | | |

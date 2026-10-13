@@ -153,3 +153,23 @@ test('layers: soloing one source reproduces it exactly; gains mix linearly', () 
   for (let i = 256; i < mix.length; i++) maxErr = Math.max(maxErr, Math.abs(mix[i] - 0.5 * (a[8000 + i] + b[8000 + i])))
   assert.ok(maxErr < 1e-4, `mix error ${maxErr}`)
 })
+
+test('metronome clicks land on beats at any speed and across loop wraps', async () => {
+  const { Metronome } = await import('../src/dsp/Metronome.ts')
+  const m = new Metronome(SR)
+  m.enabled = true
+  m.setClicks(new Float64Array([1000, 5000]), new Uint8Array([1, 0]))
+  // half speed: 128 output samples cover 64 source samples; beat 1000 is 40 source samples into [960, 1024)
+  const out = [new Float32Array(128), new Float32Array(128)]
+  m.render(out, 128, 960, 1024, null)
+  const onset = out[0].findIndex((v) => v !== 0)
+  assert.ok(Math.abs(onset - 80) <= 1, `onset ${onset}`)
+  // loop wrap: from 4990 to the loop end 5000, then 4900 → 4918; beat 5000 sits exactly at the wrap point
+  const m2 = new Metronome(SR)
+  m2.enabled = true
+  m2.setClicks(new Float64Array([4900]), new Uint8Array([0]))
+  const o2 = [new Float32Array(128), new Float32Array(128)]
+  m2.render(o2, 128, 4990, 4918, { start: 4900, end: 5000 })
+  const on2 = o2[0].findIndex((v) => v !== 0)
+  assert.ok(Math.abs(on2 - Math.round((10 / 28) * 128)) <= 1, `wrap onset ${on2}`)
+})

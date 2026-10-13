@@ -32,6 +32,8 @@ export interface ProjectData {
   stemMix?: import('./stems/types').StemMix
   /** Whole-song chord chart (possibly hand-corrected). */
   chordTrack?: import('./analysis/useChordTrack').ChordTrack
+  /** Beats and bars (possibly hand-corrected). */
+  beatGrid?: import('./rhythm/grid').BeatGrid
 }
 
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Breakdown', 'Outro']

@@ -158,6 +158,11 @@ export class StretchEngine {
     this.loopOn = enabled && this.loopEnd - this.loopStart >= MIN_LOOP
   }
 
+  /** Active loop region in source samples, or null. */
+  get loopRegion(): { start: number; end: number } | null {
+    return this.loopOn ? { start: this.loopStart, end: this.loopEnd } : null
+  }
+
   /** Restart output at `position` (source samples). */
   reset(position: number): void {
     const pos = Math.max(0, position)

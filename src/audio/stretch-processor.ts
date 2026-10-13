@@ -1,6 +1,7 @@
 import { StretchEngine } from '../dsp/StretchEngine.ts'
 import { ChannelMixer } from '../dsp/ChannelMixer.ts'
 import type { ToProcessor } from './messages.ts'
+import { Metronome } from '../dsp/Metronome.ts'
 
 const FADE_OUT = 256
 const REPORT_EVERY = 2 // render quanta (~6 ms at 44.1 kHz)
@@ -8,6 +9,7 @@ const REPORT_EVERY = 2 // render quanta (~6 ms at 44.1 kHz)
 class StretchProcessor extends AudioWorkletProcessor {
   private engine = new StretchEngine()
   private mixer = new ChannelMixer(sampleRate)
+  private metronome = new Metronome(sampleRate)
   private state: 'stopped' | 'playing' | 'stopping' = 'stopped'
   /** Playhead while stopped, in source samples. */
   private pos = 0
@@ -67,6 +69,13 @@ class StretchProcessor extends AudioWorkletProcessor {
       case 'gains':
         this.engine.setGains(msg.gains)
         break
+      case 'clicks':
+        this.metronome.setClicks(msg.positions, msg.accents)
+        break
+      case 'metronome':
+        this.metronome.enabled = msg.enabled
+        this.metronome.volume = msg.volume
+        break
     }
   }
 
@@ -75,8 +84,11 @@ class StretchProcessor extends AudioWorkletProcessor {
     if (this.state === 'stopped' || this.engine.channelCount === 0) return true
 
     const frames = out[0].length
+    const from = this.engine.position
     this.engine.render(out, frames)
     this.mixer.process(out, frames)
+    // Clicks go in after the channel mixer so vocal-cut and friends never cancel them.
+    if (this.state === 'playing') this.metronome.render(out, frames, from, this.engine.position, this.engine.loopRegion)
 
     if (this.state === 'stopping') {
       for (const ch of out) {

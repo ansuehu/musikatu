@@ -1,5 +1,6 @@
-import { Btn, Clock, Slider } from './Controls'
-import { BackIcon, ForwardIcon, LoopIcon, PauseIcon, PlayIcon, StopIcon, ToStartIcon } from './Icons'
+import { BarClock, Btn, Clock, Slider } from './Controls'
+import type { BeatGrid } from '../rhythm/grid'
+import { BackIcon, ForwardIcon, LoopIcon, MetronomeIcon, PauseIcon, PlayIcon, StopIcon, ToStartIcon } from './Icons'
 import { formatTime } from '../waveform/draw'
 import type { Selection } from '../types'
 
@@ -26,6 +27,9 @@ interface Props {
   onSemitones: (s: number) => void
   cents: number
   onCents: (c: number) => void
+  grid: BeatGrid | null
+  metronomeOn: boolean
+  onMetronome: () => void
 }
 
 export function Transport(p: Props) {
@@ -35,6 +39,7 @@ export function Transport(p: Props) {
     <footer className="transport">
       <section className="panel panel-time">
         <Clock getPosition={p.getPosition} sampleRate={p.sampleRate} length={p.length} />
+        <BarClock grid={p.grid} getPosition={p.getPosition} sampleRate={p.sampleRate} speed={p.speed} />
         <div className={`loop-info ${p.loopOn ? 'on' : ''}`}>
           {sel
             ? `${p.loopOn ? 'Looping' : 'Selection'} ${formatTime(sel.start / p.sampleRate)} – ${formatTime(sel.end / p.sampleRate)} (${((sel.end - sel.start) / p.sampleRate).toFixed(2)} s)`
@@ -68,6 +73,15 @@ export function Transport(p: Props) {
           aria-pressed={p.loopOn}
         >
           <LoopIcon />
+        </Btn>
+        <Btn
+          className={`metro ${p.metronomeOn ? 'on' : ''}`}
+          onClick={p.onMetronome}
+          disabled={p.disabled || !p.grid}
+          title={p.grid ? 'Metronome: click on every beat (K)' : 'Metronome (needs the beat grid)'}
+          aria-pressed={p.metronomeOn}
+        >
+          <MetronomeIcon />
         </Btn>
       </section>
 

@@ -11,6 +11,8 @@ export type ToProcessor =
   | { type: 'channelMode'; mode: ChannelMode }
   | { type: 'addLayers'; layers: Float32Array[][] }
   | { type: 'gains'; gains: number[] }
+  | { type: 'clicks'; positions: Float64Array; accents: Uint8Array }
+  | { type: 'metronome'; enabled: boolean; volume: number }
 
 export type FromProcessor =
   | { type: 'pos'; pos: number; playing: boolean; seq: number }

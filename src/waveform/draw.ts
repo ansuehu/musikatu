@@ -22,6 +22,10 @@ export const colors = {
   chordBlock: 'rgba(255, 181, 71, 0.13)',
   chordBlockAlt: 'rgba(255, 181, 71, 0.07)',
   chordText: '#ffd28a',
+  gridBeat: 'rgba(255, 255, 255, 0.06)',
+  gridBar: 'rgba(255, 255, 255, 0.16)',
+  gridBarTick: 'rgba(255, 255, 255, 0.28)',
+  gridText: '#6f7b94',
 }
 
 export const markerColors = {

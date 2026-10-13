@@ -44,13 +44,14 @@ interface Props {
   channels: number
   stemsPanel: ReactNode
   chordsPanel: ReactNode
+  gridPanel: ReactNode
   stemsActive: boolean
 }
 
 const TABS: { id: SidebarTab; label: string }[] = [
   { id: 'stems', label: 'Stems' },
   { id: 'chords', label: 'Chords' },
-  { id: 'markers', label: 'Markers' },
+  { id: 'markers', label: 'Beats' },
   { id: 'loops', label: 'Loops' },
   { id: 'eq', label: 'EQ' },
   { id: 'mix', label: 'Mix' },
@@ -133,6 +134,10 @@ function MarkersTab(p: Props) {
 
   return (
     <div className="markers-tab">
+      {p.gridPanel}
+      <div className="section-title">
+        <span className="label">Markers</span>
+      </div>
       <div className="button-row">
         <Btn className="small" disabled={p.disabled} onClick={() => p.onMarkerAdd('section')} title="Add section marker at the playhead (N)">
           + Section

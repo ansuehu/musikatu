@@ -12,6 +12,8 @@ export interface ChordTrack {
   source: ChordSource
   /** True once the user has corrected a chord; then we never overwrite it automatically. */
   edited: boolean
+  /** Chord changes have been moved onto the beat grid. */
+  snapped?: boolean
 }
 
 export type ChordStatus = { kind: 'idle' } | { kind: 'running'; fraction: number } | { kind: 'error'; message: string }

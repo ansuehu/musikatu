@@ -4,6 +4,16 @@ import type { Peaks } from '../waveform/peaks'
 import type { Selection, View } from '../types'
 import { measureNumbers, type Marker } from '../project'
 import { segmentAt, type ChordSegment } from '../analysis/chordTimeline'
+import type { BeatGrid } from '../rhythm/grid'
+
+const gridIds = new WeakMap<object, number>()
+let nextGridId = 1
+const gridId = (g: BeatGrid | null) => {
+  if (!g) return 0
+  let id = gridIds.get(g)
+  if (!id) gridIds.set(g, (id = nextGridId++))
+  return id
+}
 
 /** Chord chart shown in a lane under the ruler; `labels` are display names per segment. */
 export interface ChordLane {
@@ -34,6 +44,7 @@ interface Props {
   onMarkerEdit: (id: string) => void
   onWidth: (cssWidth: number) => void
   chordLane: ChordLane | null
+  grid: BeatGrid | null
   onChordClick: (index: number) => void
   onChordDoubleClick: (index: number) => void
 }
@@ -113,7 +124,7 @@ export function WaveformView(props: Props) {
       const topH = Math.round(TOP_H * dpr)
       const headerH = Math.round(HEADER_H * dpr)
       const lane = p.chordLane
-      const key = `${p.peaks.id}|${start}|${spp}|${W}|${H}|${lane?.version ?? ''}|${lane?.placeholder ?? ''}`
+      const key = `${p.peaks.id}|${start}|${spp}|${W}|${H}|${lane?.version ?? ''}|${lane?.placeholder ?? ''}|${gridId(p.grid)}`
       if (key !== cacheKey) {
         cache.width = W
         cache.height = H
@@ -128,6 +139,7 @@ export function WaveformView(props: Props) {
         cg.restore()
         drawChordLane(cg, lane, topH, headerH - topH, W, start, spp / dpr, dpr)
         drawWave(cg, p.peaks, 0, headerH, W, H - headerH, start, spp / dpr, dpr)
+        if (p.grid) drawGrid(cg, p.grid, laneH, headerH, W, H, start, spp / dpr, dpr)
         cacheKey = key
       }
       const sel = p.selection
@@ -382,4 +394,35 @@ function drawChordLane(g: CanvasRenderingContext2D, lane: ChordLane | null, y: n
     g.fillText(label, tx, y + h / 2 + 0.5)
     g.restore()
   }
+}
+
+/** Beat lines (faint), bar lines and bar numbers. Bar numbers thin out when zoomed out. */
+function drawGrid(g: CanvasRenderingContext2D, grid: BeatGrid, laneH: number, headerH: number, W: number, H: number, start: number, spp: number, dpr: number): void {
+  const end = start + W * spp
+  const toX = (s: number) => Math.round((s - start) / spp)
+  const px = Math.max(1, Math.round(dpr))
+  const beatPx = grid.beats.length > 1 ? (grid.beats[1] - grid.beats[0]) / spp : 0
+  // Beat lines only when they are far enough apart to read.
+  if (beatPx > 6 * dpr) {
+    g.fillStyle = colors.gridBeat
+    for (const b of grid.beats) if (b >= start && b <= end) g.fillRect(toX(b), headerH, px, H - headerH)
+  }
+  const barPx = beatPx * grid.meter
+  const every = [1, 2, 4, 8, 16, 32, 64].find((n) => barPx * n >= 30 * dpr) ?? 128
+  g.font = `${10 * dpr}px Inter, system-ui, sans-serif`
+  g.textBaseline = 'middle'
+  grid.downbeats.forEach((bi, k) => {
+    const pos = grid.beats[bi]
+    if (pos < start || pos > end) return
+    const x = toX(pos)
+    const bar = grid.firstBar + k
+    g.fillStyle = colors.gridBar
+    g.fillRect(x, headerH, px, H - headerH)
+    if ((bar - 1) % every === 0 || every === 1) {
+      g.fillStyle = colors.gridBarTick
+      g.fillRect(x, 0, px, laneH)
+      g.fillStyle = colors.gridText
+      g.fillText(String(bar), x + 3 * dpr, laneH / 2 + 0.5)
+    }
+  })
 }

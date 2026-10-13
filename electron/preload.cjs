@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('api', {
   onGlobalShortcut: (callback) => subscribe('shortcuts:triggered', callback),
   onMenu: (callback) => subscribe('menu', callback),
   onFileOpened: (callback) => subscribe('file:opened', callback),
+  beats: {
+    track: (mono) => ipcRenderer.invoke('beats:track', mono),
+    onProgress: (callback) => subscribe('stems:event', (e) => e.type === 'beatsProgress' && callback(e.fraction)),
+  },
   stems: {
     info: () => ipcRenderer.invoke('stems:info'),
     setPreference: (p) => ipcRenderer.invoke('stems:setPreference', p),

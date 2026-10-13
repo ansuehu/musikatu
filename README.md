@@ -72,6 +72,19 @@ npm run dist:dir         # unpacked app only, quick to check
 - Corrections are saved with the song and never overwritten automatically.
 - Names follow what you hear: they include the pitch shift, the instrument transposition and your spelling choice.
 
+**Beats, bars and metronome (Beats tab)**
+- Every song gets a beat grid automatically, about 3 s on CPU: beats, downbeats, tempo and meter.
+  - Uses **Beat This!** (JKU Linz, ISMIR 2024), small model, 10 MB, bundled with the app, so it works offline.
+  - Its output matches the reference implementation exactly on a test song (all 278 beats and 79 downbeats).
+- **Waveform:** bar numbers along the top, bar and beat lines. The transport shows *Bar 17 · 3* and the tempo, adjusted for the current speed.
+- **Metronome** (`K`): clicks on every beat with an accent on the 1. It is rendered in the audio thread, so it stays in time at any speed and across loops.
+- **Bar tools:**
+  - *Loop bars 9–12*, plus `Shift+B` to select the current bar.
+  - `PageUp` / `PageDown` move between bars.
+  - Selections snap to beats (can be turned off).
+- **Fixing the grid:** move the downbeat ±1 beat, ½× / 2× tempo, change the meter, "Bar 1 here". Corrections are saved with the song.
+- **Chord chart:** chord changes snap onto beats, chord rows show bar.beat, and the exported sheet has a bar-by-bar section (`| C | Am | F G |`, with `%` for repeated bars).
+
 **Guitar chord diagrams**
 - The current chord guess is drawn as a guitar chord box: muted and open strings, finger numbers, barres, the position label (e.g. "6fr"), root notes highlighted, and note names under the strings.
 - Familiar open and barre shapes are shown first. Other voicings come from a fretboard search that covers all 16 chord qualities in every key, slash chords included. Use ‹ › to step through up to four voicings across the neck.
@@ -101,7 +114,7 @@ npm run dist:dir         # unpacked app only, quick to check
 | --- | --- |
 | `Space` play/pause · `S` stop · `Home` to start | `←`/`→` ±1 s · `Shift+←/→` ±5 s · `,`/`.` previous/next marker |
 | `L` loop on/off · `Shift+L` save loop · `1`–`9` recall · `Esc` clear | `H` half speed · `[`/`]` speed ±5% · `Shift+↑/↓` pitch ±1 st |
-| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
+| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord · `PageUp`/`PageDown` bars · `Shift+B` select bar · `K` metronome | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
 
 ## Stem separation: performance
 
@@ -115,6 +128,8 @@ Measured on a Ryzen with 16 threads and a Radeon RX 6700 XT (Linux):
 GPU and CPU outputs agree to 87 dB SNR. Peak memory of the separator process is about 2.5 GB. On machines with fewer CPU cores the GPU usually wins, which is why Auto measures instead of assuming.
 
 The model is HTDemucs by Défossez et al. (Meta AI), MIT licence; the ONNX export is by adowu (MIT).
+
+The beat model is Beat This! small (Foscarin, Schlüter, Widmer, JKU Linz; MIT). It was exported here from the official checkpoint; see `scripts/beat-model/` and `electron/beats/models/NOTICE.md`.
 
 ## Architecture
 

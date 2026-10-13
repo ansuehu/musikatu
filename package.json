@@ -107,7 +107,8 @@
       "synopsis": "Music transcription workbench with on-device AI stem separation"
     },
     "asarUnpack": [
-      "node_modules/onnxruntime-node/**"
+      "node_modules/onnxruntime-node/**",
+      "electron/beats/models/**"
     ]
   },
   "dependencies": {

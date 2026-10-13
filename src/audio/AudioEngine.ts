@@ -141,6 +141,15 @@ export class AudioEngine {
     this.post({ type: 'gains', gains })
   }
 
+  /** Beat positions (samples) for the metronome; accents mark downbeats. */
+  setClicks(positions: number[], accents: boolean[]): void {
+    this.post({ type: 'clicks', positions: Float64Array.from(positions), accents: Uint8Array.from(accents, (a) => (a ? 1 : 0)) })
+  }
+
+  setMetronome(enabled: boolean, volume: number): void {
+    this.post({ type: 'metronome', enabled, volume })
+  }
+
   setChannelMode(mode: ChannelMode): void {
     this.post({ type: 'channelMode', mode })
   }

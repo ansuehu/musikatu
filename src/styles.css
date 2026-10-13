@@ -1254,3 +1254,67 @@ input[type='range']:disabled {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- beat grid ---------- */
+.bar-clock {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bar-now {
+  font-weight: 600;
+  color: var(--text);
+}
+.grid-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.tempo-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tempo-summary b {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.meter-field .select {
+  height: 24px;
+}
+.fix-row,
+.metro-row,
+.bar-loop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.metro-row input[type='range'] {
+  flex: 1;
+  min-width: 80px;
+}
+.num-input {
+  width: 46px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+}
+.panel-buttons .btn.metro.on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+.bar-pos {
+  width: 34px;
+  font-variant-numeric: tabular-nums;
+}

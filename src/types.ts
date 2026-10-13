@@ -32,6 +32,11 @@ declare global {
       onMenu(callback: (command: 'open' | 'shortcuts') => void): () => void
       onFileOpened(callback: (file: AudioFilePayload) => void): () => void
       stems: import('./stems/types').StemsApi
+      beats: {
+        /** Mono 22.05 kHz audio → beat and downbeat times in seconds. */
+        track(mono: Float32Array): Promise<{ beats: number[]; downbeats: number[]; seconds: number; sampleRate: number }>
+        onProgress(callback: (fraction: number) => void): () => void
+      }
     }
   }
 }

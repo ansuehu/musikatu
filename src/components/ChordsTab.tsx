@@ -7,6 +7,8 @@ import type { AudioEngine } from '../audio/AudioEngine'
 import { formatTime } from '../waveform/draw'
 import { ChordDiagram } from './ChordDiagram'
 import { Btn } from './Controls'
+import { positionInfo, type BeatGrid } from '../rhythm/grid'
+import { chordSheetByBars } from '../rhythm/sheet'
 
 interface Props {
   track: ChordTrack | null
@@ -32,6 +34,8 @@ interface Props {
   onSplit: () => void
   onSeek: (index: number) => void
   onLoop: (index: number) => void
+  grid: BeatGrid | null
+  songLength: number
 }
 
 export function ChordsTab(p: Props) {
@@ -84,12 +88,13 @@ export function ChordsTab(p: Props) {
         .replace(/^/, '| ')
         .concat(' |'),
     )
+    if (p.grid) lines.push('', 'By bar:', chordSheetByBars(segments, p.grid, p.songLength, p.label))
     lines.push('', 'Timeline:')
     for (const s of segments) lines.push(`${formatTime(s.start / p.sampleRate, 0.1).padStart(7)}  ${s.chord ? p.label(s.chord) : 'N.C.'}`)
     return lines.join('\n') + '\n'
   }
 
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'ok' | 'failed' | null>(null)
   const running = p.status.kind === 'running'
   const vocab = p.track?.vocabulary ?? 'standard'
   const source: ChordSource = p.track?.source ?? (p.hasStems ? 'instruments' : 'mix')
@@ -173,6 +178,7 @@ export function ChordsTab(p: Props) {
                 <button type="button" className="time link" onMouseDown={(e) => e.preventDefault()} onClick={() => p.onSeek(i)}>
                   {formatTime(s.start / p.sampleRate, 0.1)}
                 </button>
+                {p.grid && <span className="bar-pos muted small-text">{barLabel(p.grid, s.start)}</span>}
                 <ChordInput value={s.chord ? p.label(s.chord) : 'N.C.'} parse={p.parse} onCommit={(c) => p.onEdit(i, c)} />
                 <span className="muted small-text dur">{((s.end - s.start) / p.sampleRate).toFixed(1)} s</span>
                 <Btn className="small icon" onClick={() => p.onLoop(i)} title="Select and loop this chord">
@@ -188,12 +194,16 @@ export function ChordsTab(p: Props) {
             <Btn
               className="small"
               onClick={async () => {
-                await navigator.clipboard.writeText(sheet())
-                setCopied(true)
-                setTimeout(() => setCopied(false), 1500)
+                try {
+                  await navigator.clipboard.writeText(sheet())
+                  setCopied('ok')
+                } catch {
+                  setCopied('failed')
+                }
+                setTimeout(() => setCopied(null), 1800)
               }}
             >
-              {copied ? 'Copied ✓' : 'Copy chord sheet'}
+              {copied === 'ok' ? 'Copied ✓' : copied === 'failed' ? 'Copy failed: use Save' : 'Copy chord sheet'}
             </Btn>
             <Btn
               className="small"
@@ -255,4 +265,9 @@ function ChordInput({ value, parse, onCommit }: { value: string; parse: Props['p
       }}
     />
   )
+}
+
+function barLabel(grid: BeatGrid, pos: number): string {
+  const info = positionInfo(grid, pos + 1)
+  return info.index < 0 ? '' : `${info.bar}.${info.beat}`
 }

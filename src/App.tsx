@@ -23,6 +23,10 @@ import { useChordTrack, type ChordTrack } from './analysis/useChordTrack'
 import { mergeShort, segmentAt, type Chord } from './analysis/chordTimeline'
 import { chordName, parseChordName } from './analysis/notes'
 import type { ChordLane } from './components/WaveformView'
+import { GridPanel } from './components/GridPanel'
+import { useBeatGrid } from './rhythm/useBeatGrid'
+import { barRange, positionInfo, snapToBeat, type BeatGrid } from './rhythm/grid'
+import { snapSegmentsToBeats } from './rhythm/sheet'
 import type { AudioFilePayload, Selection, View } from './types'
 
 interface LoadedFile {
@@ -47,6 +51,8 @@ interface Prefs {
   volume: number
   showGuitar: boolean
   capo: number
+  metronome: { on: boolean; volume: number }
+  snapToBeats: boolean
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -60,6 +66,8 @@ const DEFAULT_PREFS: Prefs = {
   volume: 0.8,
   showGuitar: true,
   capo: 0,
+  metronome: { on: false, volume: 0.6 },
+  snapToBeats: true,
 }
 
 function loadPrefs(): Prefs {
@@ -100,6 +108,7 @@ export default function App() {
   const [channelMode, setChannelMode] = useState<ChannelMode>('stereo')
   const [stemMix, setStemMix] = useState<StemMix>(DEFAULT_STEM_MIX)
   const [chordTrack, setChordTrack] = useState<ChordTrack | null>(null)
+  const [beatGrid, setBeatGrid] = useState<BeatGrid | null>(null)
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null)
   const [editMarkerRequest, setEditMarkerRequest] = useState<{ id: string; n: number } | null>(null)
   const [activeLoop, setActiveLoop] = useState<string | null>(null)
@@ -113,6 +122,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(initialPrefs.sidebarOpen)
   const [showGuitar, setShowGuitar] = useState(initialPrefs.showGuitar)
   const [capo, setCapo] = useState(initialPrefs.capo)
+  const [metronome, setMetronome] = useState(initialPrefs.metronome)
+  const [snapToBeats, setSnapToBeats] = useState(initialPrefs.snapToBeats)
   // shortcuts
   const [bindings, setBindingsRaw] = useState<Bindings>(loadBindings)
   const [globalEnabled, setGlobalEnabledRaw] = useState(loadGlobalEnabled)
@@ -162,20 +173,20 @@ export default function App() {
 
   // ---- persistence ----
   useEffect(() => {
-    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo }
+    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats }
     try {
       localStorage.setItem('earwork.prefs.v1', JSON.stringify(prefs))
     } catch {
       /* ignore */
     }
-  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo])
+  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats])
 
   useEffect(() => {
     if (!projectId) return
-    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined }
+    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined }
     const t = setTimeout(() => void saveProject(projectId, data), 400)
     return () => clearTimeout(t)
-  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack])
+  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid])
 
   // ---- view (zoom / scroll) ----
   const clampView = useCallback(
@@ -230,6 +241,7 @@ export default function App() {
         setCents(saved?.cents ?? 0)
         setStemMix(saved?.stemMix ?? DEFAULT_STEM_MIX)
         setChordTrack(saved?.chordTrack ?? null)
+        setBeatGrid(saved?.beatGrid ?? null)
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
         setStatus(restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null)
@@ -329,8 +341,18 @@ export default function App() {
     setLoopOn(next)
   }, [engine, region, loopOn])
 
+  const gridRef = useRef<BeatGrid | null>(null)
+  const snapRef = useRef(snapToBeats)
+  snapRef.current = snapToBeats
   const onSelect = useCallback(
-    (sel: Selection, final: boolean) => {
+    (raw: Selection, final: boolean) => {
+      const g = gridRef.current
+      let sel = raw
+      if (g && snapRef.current) {
+        const a = snapToBeat(g, raw.start)
+        const b = snapToBeat(g, raw.end)
+        if (b > a) sel = { start: a, end: b }
+      }
       setSelection(sel)
       setActiveLoop(null)
       if (final) engine?.seek(sel.start)
@@ -446,8 +468,57 @@ export default function App() {
       .map((s) => ({ id: s.name, channels: Array.from({ length: s.buffer.numberOfChannels }, (_, c) => s.buffer.getChannelData(c)), gain: g[s.name] }))
   }, [stems, stemMix])
 
+  // ---- beats and bars ----
+  gridRef.current = beatGrid
+  const beats = useBeatGrid({ buffer: file?.buffer ?? null, grid: beatGrid, onGrid: setBeatGrid })
+  useEffect(() => {
+    if (!engine) return
+    const down = new Set(beatGrid?.downbeats ?? [])
+    engine.setClicks(beatGrid?.beats ?? [], (beatGrid?.beats ?? []).map((_, i) => down.has(i)))
+  }, [engine, beatGrid])
+  useEffect(() => engine?.setMetronome(metronome.on && !!beatGrid, metronome.volume), [engine, metronome, beatGrid])
+  const loopBars = useCallback(
+    (from: number, to: number) => {
+      if (!beatGrid || !engine) return
+      const a = barRange(beatGrid, from, length)
+      const b = barRange(beatGrid, to, length)
+      if (!a || !b) return setStatus({ kind: 'error', text: `This song has bars ${beatGrid.firstBar}–${beatGrid.firstBar + beatGrid.downbeats.length - 1}.` })
+      setSelection({ start: a.start, end: b.end })
+      setActiveLoop(null)
+      setLoopOn(true)
+      engine.seek(a.start)
+      const span = detailWidth * view.spp
+      if (a.start < view.start || a.start > view.start + span) setView({ start: a.start - span * 0.05, spp: view.spp })
+    },
+    [beatGrid, engine, length, detailWidth, view, setView],
+  )
+  const jumpBar = useCallback(
+    (dir: -1 | 1) => {
+      if (!beatGrid || !engine) return
+      const info = positionInfo(beatGrid, engine.position)
+      const here = barRange(beatGrid, info.bar, length)
+      // like "previous track": first back to the start of this bar, then to the bar before
+      const slack = engine.isPlaying ? sampleRate * 0.3 : 1
+      const target = dir > 0 ? info.bar + 1 : here && engine.position - here.start > slack ? info.bar : info.bar - 1
+      const r = barRange(beatGrid, target, length)
+      if (r) engine.seek(r.start)
+    },
+    [beatGrid, engine, length, sampleRate],
+  )
+
   // ---- whole-song chord chart ----
-  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrack, a4 })
+  // Chord changes land on beats once both the chart and the grid exist (unless the user has edited the chart).
+  const setChordTrackSnapped = useCallback(
+    (t: ChordTrack) => {
+      const g = gridRef.current
+      setChordTrack(g && !t.edited ? { ...t, segments: snapSegmentsToBeats(t.segments, g.beats, Math.round(sampleRate * 0.25)), snapped: true } : t)
+    },
+    [sampleRate],
+  )
+  useEffect(() => {
+    if (beatGrid && chordTrack && !chordTrack.edited && !chordTrack.snapped) setChordTrackSnapped(chordTrack)
+  }, [beatGrid, chordTrack, setChordTrackSnapped])
+  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrackSnapped, a4 })
   // Names follow what you hear: the pitch shift (rounded) plus the instrument transposition.
   const pitchShift = Math.round(semitones + cents / 100)
   const chordLabel = useCallback(
@@ -548,6 +619,15 @@ export default function App() {
         case 'follow': return setFollow((f) => !f)
         case 'toggleStems': return setStemMix((m) => ({ ...m, enabled: !m.enabled }))
         case 'prevChord': return jumpChord(-1)
+        case 'prevBar': return jumpBar(-1)
+        case 'nextBar': return jumpBar(1)
+        case 'metronome': return setMetronome((m) => ({ ...m, on: !m.on }))
+        case 'selectBar': {
+          if (!beatGrid || !engine) return
+          const r = barRange(beatGrid, positionInfo(beatGrid, engine.position).bar, length)
+          if (r) onSelect(r, true)
+          return
+        }
         case 'nextChord': return jumpChord(1)
         case 'selectChord': {
           const i = chordTrack && engine ? segmentAt(chordTrack.segments, engine.position) : -1
@@ -691,6 +771,7 @@ export default function App() {
                 }}
                 onWidth={setDetailWidth}
                 chordLane={chordLane}
+                grid={beatGrid}
                 onChordClick={(i) => {
                   const seg = chordTrack?.segments[i]
                   if (seg) engine?.seek(seg.start)
@@ -780,6 +861,23 @@ export default function App() {
             onChannelMode={setChannelMode}
             channels={file?.buffer.numberOfChannels ?? 2}
             stemsActive={stemsActive}
+            gridPanel={
+              <GridPanel
+                grid={beatGrid}
+                status={beats.status}
+                hasFile={!!file}
+                sampleRate={sampleRate}
+                speed={speed}
+                getPosition={getPosition}
+                onRerun={() => void beats.run()}
+                onGrid={setBeatGrid}
+                metronome={metronome}
+                onMetronome={setMetronome}
+                snap={snapToBeats}
+                onSnap={setSnapToBeats}
+                onLoopBars={loopBars}
+              />
+            }
             chordsPanel={
               <ChordsTab
                 track={chordTrack}
@@ -826,6 +924,8 @@ export default function App() {
                   selectChordSpan(i)
                   setLoopOn(true)
                 }}
+                grid={beatGrid}
+                songLength={length}
               />
             }
             stemsPanel={
@@ -861,6 +961,9 @@ export default function App() {
         onSemitones={setSemitones}
         cents={cents}
         onCents={setCents}
+        grid={beatGrid}
+        metronomeOn={metronome.on}
+        onMetronome={() => setMetronome((m) => ({ ...m, on: !m.on }))}
       />
 
       {shortcutsOpen && (

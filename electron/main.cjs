@@ -33,6 +33,7 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: '#0d0f13',
     title: 'Earwork AI',
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/*.test.ts\"",
     "dist": "npm run build && electron-builder",
-    "dist:dir": "npm run build && electron-builder --dir"
+    "dist:dir": "npm run build && electron-builder --dir",
+    "install:linux": "npm run dist:dir && bash scripts/install-linux.sh"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -35,7 +36,8 @@
     "appId": "eus.ehu.earwork.ai",
     "productName": "Earwork AI",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**",
@@ -71,7 +73,8 @@
       "files": [
         "!node_modules/onnxruntime-node/bin/**/win32/**",
         "!node_modules/onnxruntime-node/bin/**/linux/**"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "win": {
       "target": [
@@ -80,7 +83,8 @@
       "files": [
         "!node_modules/onnxruntime-node/bin/**/linux/**",
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
@@ -95,7 +99,9 @@
       "files": [
         "!node_modules/onnxruntime-node/bin/**/win32/**",
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
-      ]
+      ],
+      "icon": "build/icon.png",
+      "executableName": "earwork-ai"
     },
     "asarUnpack": [
       "node_modules/onnxruntime-node/**"
@@ -103,5 +109,6 @@
   },
   "dependencies": {
     "onnxruntime-node": "^1.30.0"
-  }
+  },
+  "desktopName": "earwork-ai.desktop"
 }

@@ -78,6 +78,9 @@ npm run dist:dir         # unpacked app only, quick to check
   - Its output matches the reference implementation exactly on a test song (all 278 beats and 79 downbeats).
 - **Waveform:** bar numbers along the top, bar and beat lines. The transport shows *Bar 17 · 3* and the tempo, adjusted for the current speed.
 - **Metronome** (`K`): clicks on every beat with an accent on the 1. It is rendered in the audio thread, so it stays in time at any speed and across loops.
+  - The ⚙ editor offers an overall level up to 200%, a sine, triangle or square sound, and per click (accent / other beats) volume, pitch in Hz (slider or typed, with the note name) and length.
+  - Each click has a ▶ Test button that works while stopped.
+  - Presets: Classic, Woodblock, Cutting, Low & soft, Accent only. Settings are remembered app-wide.
 - **Bar tools:**
   - *Loop bars 9–12*, plus `Shift+B` to select the current bar.
   - `PageUp` / `PageDown` move between bars.

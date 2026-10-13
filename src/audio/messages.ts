@@ -1,4 +1,5 @@
 import type { ChannelMode } from '../dsp/ChannelMixer.ts'
+import type { MetronomeSettings } from '../dsp/Metronome.ts'
 
 /** Messages between AudioEngine (main thread) and the stretch AudioWorklet. Positions are source samples. */
 export type ToProcessor =
@@ -12,7 +13,8 @@ export type ToProcessor =
   | { type: 'addLayers'; layers: Float32Array[][] }
   | { type: 'gains'; gains: number[] }
   | { type: 'clicks'; positions: Float64Array; accents: Uint8Array }
-  | { type: 'metronome'; enabled: boolean; volume: number }
+  | { type: 'metronome'; enabled: boolean; settings: MetronomeSettings }
+  | { type: 'metronomePreview'; accent: boolean }
 
 export type FromProcessor =
   | { type: 'pos'; pos: number; playing: boolean; seq: number }

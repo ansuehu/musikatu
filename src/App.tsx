@@ -24,6 +24,8 @@ import { mergeShort, segmentAt, type Chord } from './analysis/chordTimeline'
 import { chordName, parseChordName } from './analysis/notes'
 import type { ChordLane } from './components/WaveformView'
 import { GridPanel } from './components/GridPanel'
+import type { MetronomePrefs } from './components/MetronomeEditor'
+import { DEFAULT_METRONOME } from './dsp/Metronome'
 import { useBeatGrid } from './rhythm/useBeatGrid'
 import { barRange, positionInfo, snapToBeat, type BeatGrid } from './rhythm/grid'
 import { snapSegmentsToBeats } from './rhythm/sheet'
@@ -51,7 +53,7 @@ interface Prefs {
   volume: number
   showGuitar: boolean
   capo: number
-  metronome: { on: boolean; volume: number }
+  metronome: MetronomePrefs
   snapToBeats: boolean
 }
 
@@ -66,7 +68,7 @@ const DEFAULT_PREFS: Prefs = {
   volume: 0.8,
   showGuitar: true,
   capo: 0,
-  metronome: { on: false, volume: 0.6 },
+  metronome: { ...DEFAULT_METRONOME, on: false },
   snapToBeats: true,
 }
 
@@ -122,7 +124,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(initialPrefs.sidebarOpen)
   const [showGuitar, setShowGuitar] = useState(initialPrefs.showGuitar)
   const [capo, setCapo] = useState(initialPrefs.capo)
-  const [metronome, setMetronome] = useState(initialPrefs.metronome)
+  // Older saved prefs only had { on, volume }; fill in the sound settings.
+  const [metronome, setMetronome] = useState<MetronomePrefs>(() => ({ ...DEFAULT_METRONOME, ...initialPrefs.metronome }))
   const [snapToBeats, setSnapToBeats] = useState(initialPrefs.snapToBeats)
   // shortcuts
   const [bindings, setBindingsRaw] = useState<Bindings>(loadBindings)
@@ -476,7 +479,12 @@ export default function App() {
     const down = new Set(beatGrid?.downbeats ?? [])
     engine.setClicks(beatGrid?.beats ?? [], (beatGrid?.beats ?? []).map((_, i) => down.has(i)))
   }, [engine, beatGrid])
-  useEffect(() => engine?.setMetronome(metronome.on && !!beatGrid, metronome.volume), [engine, metronome, beatGrid])
+  const metronomeRef = useRef(metronome)
+  metronomeRef.current = metronome
+  useEffect(() => {
+    const { on, ...settings } = metronome
+    engine?.setMetronome(on && !!beatGrid, settings)
+  }, [engine, metronome, beatGrid])
   const loopBars = useCallback(
     (from: number, to: number) => {
       if (!beatGrid || !engine) return
@@ -873,6 +881,12 @@ export default function App() {
                 onGrid={setBeatGrid}
                 metronome={metronome}
                 onMetronome={setMetronome}
+                onPreviewClick={(accent) => {
+                  // send the newest settings first (a preset click and its preview happen in the same tick)
+                  const { on, ...settings } = metronomeRef.current
+                  engine?.setMetronome(on && !!beatGrid, settings)
+                  engine?.previewClick(accent)
+                }}
                 snap={snapToBeats}
                 onSnap={setSnapToBeats}
                 onLoopBars={loopBars}

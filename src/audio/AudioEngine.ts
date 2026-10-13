@@ -1,6 +1,7 @@
 import processorUrl from './stretch-processor.ts?worker&url'
 import type { FromProcessor, ToProcessor } from './messages.ts'
 import type { ChannelMode } from '../dsp/ChannelMixer.ts'
+import type { MetronomeSettings } from '../dsp/Metronome.ts'
 import { EQ_FREQS, PASS_MAX_HZ, PASS_MIN_HZ, type EqState } from './eq.ts'
 
 export type Timbre = 'piano' | 'sine' | 'guitar'
@@ -146,8 +147,14 @@ export class AudioEngine {
     this.post({ type: 'clicks', positions: Float64Array.from(positions), accents: Uint8Array.from(accents, (a) => (a ? 1 : 0)) })
   }
 
-  setMetronome(enabled: boolean, volume: number): void {
-    this.post({ type: 'metronome', enabled, volume })
+  setMetronome(enabled: boolean, settings: MetronomeSettings): void {
+    this.post({ type: 'metronome', enabled, settings })
+  }
+
+  /** Plays one metronome click now (accent = the beat-1 sound). */
+  previewClick(accent: boolean): void {
+    void this.ctx.resume()
+    this.post({ type: 'metronomePreview', accent })
   }
 
   setChannelMode(mode: ChannelMode): void {

@@ -173,3 +173,19 @@ test('metronome clicks land on beats at any speed and across loop wraps', async 
   const on2 = o2[0].findIndex((v) => v !== 0)
   assert.ok(Math.abs(on2 - Math.round((10 / 28) * 128)) <= 1, `wrap onset ${on2}`)
 })
+
+test('metronome settings: pitch, level and length follow the editor', async () => {
+  const { Metronome, DEFAULT_METRONOME } = await import('../src/dsp/Metronome.ts')
+  const m = new Metronome(SR)
+  m.settings = { ...DEFAULT_METRONOME, master: 2, accent: { volume: 1, freq: 441, length: 100 } }
+  m.preview(true)
+  const out = [new Float32Array(SR / 10), new Float32Array(SR / 10)]
+  m.render(out, out[0].length, null, null, null)
+  // 441 Hz over the first 50 ms: ~22 positive zero crossings
+  let up = 0
+  for (let i = 1; i < SR / 20; i++) if (out[0][i - 1] < 0 && out[0][i] >= 0) up++
+  assert.ok(Math.abs(up - 22) <= 1, `crossings ${up}`)
+  const peak = Math.max(...out[0].map(Math.abs))
+  assert.ok(peak > 1.1 && peak <= 1.2, `peak ${peak}`) // 0.6 base × master 2
+  assert.equal(m.busy, false) // 100 ms click finished within the 100 ms rendered
+})

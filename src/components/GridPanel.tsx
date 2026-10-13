@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { doubleTempo, halfTempo, lastBar, setBarOneAt, shiftDownbeats, tempoBpm, withMeter, type BeatGrid } from '../rhythm/grid'
 import type { GridStatus } from '../rhythm/useBeatGrid'
-import { Btn, Slider } from './Controls'
+import { Btn } from './Controls'
+import { MetronomeEditor, type MetronomePrefs } from './MetronomeEditor'
 
 interface Props {
   grid: BeatGrid | null
@@ -12,8 +13,9 @@ interface Props {
   getPosition: () => number
   onRerun: () => void
   onGrid: (g: BeatGrid) => void
-  metronome: { on: boolean; volume: number }
-  onMetronome: (m: { on: boolean; volume: number }) => void
+  metronome: MetronomePrefs
+  onMetronome: (m: MetronomePrefs) => void
+  onPreviewClick: (accent: boolean) => void
   snap: boolean
   onSnap: (on: boolean) => void
   onLoopBars: (from: number, to: number) => void
@@ -87,23 +89,7 @@ export function GridPanel(p: Props) {
             </Btn>
           </div>
 
-          <div className="metro-row">
-            <Btn
-              className={`small ${p.metronome.on ? 'on' : ''}`}
-              onClick={() => p.onMetronome({ ...p.metronome, on: !p.metronome.on })}
-              title="Click on every beat, accent on the 1 — stays in time at any speed (K)"
-            >
-              {p.metronome.on ? 'Metronome on' : 'Metronome'}
-            </Btn>
-            <Slider
-              min={0}
-              max={1}
-              step={0.01}
-              value={p.metronome.volume}
-              onChange={(e) => p.onMetronome({ ...p.metronome, volume: +e.target.value })}
-              aria-label="Metronome volume"
-            />
-          </div>
+          <MetronomeEditor value={p.metronome} onChange={p.onMetronome} onPreview={p.onPreviewClick} hasGrid={!!g} />
 
           <label className="check small-text">
             <input type="checkbox" checked={p.snap} onChange={(e) => p.onSnap(e.target.checked)} />

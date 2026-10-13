@@ -74,14 +74,21 @@ class StretchProcessor extends AudioWorkletProcessor {
         break
       case 'metronome':
         this.metronome.enabled = msg.enabled
-        this.metronome.volume = msg.volume
+        this.metronome.settings = msg.settings
+        break
+      case 'metronomePreview':
+        this.metronome.preview(msg.accent)
         break
     }
   }
 
   process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0]
-    if (this.state === 'stopped' || this.engine.channelCount === 0) return true
+    if (this.state === 'stopped' || this.engine.channelCount === 0) {
+      // auditioning a click works while stopped (outputs arrive zeroed)
+      if (this.metronome.busy) this.metronome.render(out, out[0].length, null, null, null)
+      return true
+    }
 
     const frames = out[0].length
     const from = this.engine.position

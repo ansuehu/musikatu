@@ -1318,3 +1318,62 @@ input[type='range']:disabled {
   width: 34px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- metronome editor ---------- */
+.metronome-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.metro-row .value {
+  width: 40px;
+}
+.metro-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.click-sound {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.click-sound-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.click-sound-head .btn {
+  margin-left: auto;
+}
+.click-title {
+  font-weight: 700;
+  font-size: 12px;
+}
+.metro-field {
+  display: grid;
+  grid-template-columns: 44px minmax(60px, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+.metro-field .value {
+  width: 48px;
+  font-size: 12px;
+}
+.hz-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.hz-input {
+  width: 48px;
+  padding: 0 4px;
+}
+.hz-cell .small-text {
+  min-width: 46px;
+}

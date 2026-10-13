@@ -1167,12 +1167,6 @@ input[type='range']:disabled {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
-.brand-ai {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  font-size: 11px;
-}
 
 /* ---------- chords tab ---------- */
 .chords-tab {

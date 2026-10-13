@@ -1,6 +1,8 @@
-# Earwork AI
+# Musikatu
 
-This is Earwork plus **on-device AI instrument separation**. The classic version without AI lives on the `main` branch (tag `v1-classic`). Both use different app IDs, so they install side by side.
+A music transcription workbench with **on-device AI** (formerly *Earwork AI*). The classic version without AI lives on the `main` branch (tag `v1-classic`). The two use different app IDs, so they install side by side.
+
+When it starts under the new name for the first time, Musikatu adopts the old `Earwork AI` data folder automatically: the downloaded model, cached stems, per-song projects, preferences and shortcuts all carry over.
 
 A precision playback workbench for transcribing music by ear: load a recording, zoom into the waveform, loop a phrase, and slow it down or retune it. You can also filter or cancel parts of the mix, see which notes are sounding, and check pitches against a reference piano.
 

@@ -1,6 +1,6 @@
 {
-  "name": "earwork-ai",
-  "productName": "Earwork AI",
+  "name": "musikatu",
+  "productName": "Musikatu",
   "version": "0.1.0",
   "description": "Precision playback workbench for transcribing music by ear, with on-device AI instrument separation",
   "private": true,
@@ -33,8 +33,8 @@
     "email": "andonisudupeehu@gmail.com"
   },
   "build": {
-    "appId": "eus.ehu.earwork.ai",
-    "productName": "Earwork AI",
+    "appId": "io.github.ansuehu.musikatu",
+    "productName": "Musikatu",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -102,9 +102,9 @@
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
       ],
       "icon": "build/icon.png",
-      "executableName": "earwork-ai",
+      "executableName": "musikatu",
       "maintainer": "Andoni Sudupe <andonisudupeehu@gmail.com>",
-      "synopsis": "Music transcription workbench with on-device AI stem separation"
+      "synopsis": "Musikatu: music transcription workbench with on-device AI"
     },
     "asarUnpack": [
       "node_modules/onnxruntime-node/**",
@@ -115,6 +115,6 @@
   "dependencies": {
     "onnxruntime-node": "^1.30.0"
   },
-  "desktopName": "earwork-ai.desktop",
+  "desktopName": "musikatu.desktop",
   "homepage": "mailto:andonisudupeehu@gmail.com"
 }

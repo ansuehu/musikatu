@@ -91,7 +91,7 @@ const DEFAULT_PREFS: Prefs = {
 
 function loadPrefs(): Prefs {
   try {
-    return { ...DEFAULT_PREFS, ...(JSON.parse(localStorage.getItem('earwork.prefs.v1') ?? '{}') as Partial<Prefs>) }
+    return { ...DEFAULT_PREFS, ...(JSON.parse(localStorage.getItem('musikatu.prefs.v1') ?? '{}') as Partial<Prefs>) }
   } catch {
     return DEFAULT_PREFS
   }
@@ -213,7 +213,7 @@ export default function App() {
   useEffect(() => {
     const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainer: trainerSettings }
     try {
-      localStorage.setItem('earwork.prefs.v1', JSON.stringify(prefs))
+      localStorage.setItem('musikatu.prefs.v1', JSON.stringify(prefs))
     } catch {
       /* ignore */
     }
@@ -285,7 +285,7 @@ export default function App() {
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
         setStatus(restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null)
-        document.title = `${name} — Earwork AI`
+        document.title = `${name} — Musikatu`
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err)
         setStatus({ kind: 'error', text: `Couldn't decode “${name}”. ${detail}` })
@@ -628,7 +628,7 @@ export default function App() {
     const tracks = noteTracks
       .filter((t) => t.visible && t.notes.length)
       .map((t) => ({ name: SOURCE_LABEL(t.source), program: GM_PROGRAM[t.source] ?? 0, notes: t.notes }))
-    const bytes = writeMidi(tracks, beatGrid, sampleRate, file?.name ?? 'Earwork')
+    const bytes = writeMidi(tracks, beatGrid, sampleRate, file?.name ?? 'Musikatu')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'audio/midi' }))
     a.download = `${(file?.name ?? 'song').replace(/\.[^.]+$/, '')} - notes.mid`

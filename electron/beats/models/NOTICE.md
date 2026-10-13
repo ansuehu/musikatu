@@ -3,7 +3,7 @@
 - `beat_this_small0.onnx`: **Beat This!** small model (2.1M parameters), beat and downbeat tracking.
   F. Foscarin, J. Schlüter, G. Widmer, *Beat This! Accurate Beat Tracking Without DBN Postprocessing*, ISMIR 2024.
   Weights: official `small0` checkpoint from https://github.com/CPJKU/beat_this (MIT licence).
-  Exported for Earwork at a fixed 1500-frame window (opset 17), with `b = len(x)` replaced by `b = x.shape[0]`
+  Exported for Musikatu at a fixed 1500-frame window (opset 17), with `b = len(x)` replaced by `b = x.shape[0]`
   so the tracer does not freeze a shape. Verified within 4e-5 of the PyTorch model on real audio, and the
   app's beats and downbeats match the reference `Audio2Beats` pipeline exactly on a test song.
   SHA-256 `e3b1f6b530b2c55fe3dd1558060f747b117f98afe0deb676774858109338bfb1`

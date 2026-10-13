@@ -68,8 +68,8 @@ export function defaultBindings(): Bindings {
   return Object.fromEntries(ACTIONS.map((a) => [a.id, { key: a.key ?? null, global: a.global ?? null, midi: null }]))
 }
 
-const STORAGE_KEY = 'earwork.bindings.v1'
-const GLOBAL_KEY = 'earwork.globalHotkeys.v1'
+const STORAGE_KEY = 'musikatu.bindings.v1'
+const GLOBAL_KEY = 'musikatu.globalHotkeys.v1'
 
 export function loadBindings(): Bindings {
   const b = defaultBindings()

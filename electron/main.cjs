@@ -6,12 +6,37 @@ const stems = require('./stems/service.cjs')
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'aac', 'ogg', 'oga', 'opus', 'm4a', 'mp4', 'webm', 'aif', 'aiff']
 
+// The app used to be called "Earwork AI": on first start under the new name, adopt its data folder
+// (downloaded model, cached stems, per-song projects, preferences, shortcuts) instead of starting empty.
+// Must run before Chromium opens anything inside userData.
+{
+  const fsSync = require('node:fs')
+  const current = app.getPath('userData')
+  const legacy = path.join(app.getPath('appData'), 'Earwork AI')
+  // Electron may already have created an empty `current` folder, so look for real app data instead of existence.
+  const APP_DATA = ['models', 'stems', 'projects', 'stems-settings.json', 'Local Storage']
+  const hasData = (dir) => APP_DATA.some((n) => fsSync.existsSync(path.join(dir, n)))
+  try {
+    if (fsSync.existsSync(legacy) && hasData(legacy) && !hasData(current)) {
+      fsSync.mkdirSync(current, { recursive: true })
+      for (const name of fsSync.readdirSync(legacy)) {
+        const to = path.join(current, name)
+        if (!fsSync.existsSync(to)) fsSync.renameSync(path.join(legacy, name), to)
+      }
+      // leave the old folder only if something could not be moved
+      if (fsSync.readdirSync(legacy).length === 0) fsSync.rmdirSync(legacy)
+    }
+  } catch (err) {
+    console.warn('Could not move the old Earwork AI data folder:', err)
+  }
+}
+
 // Wayland compositors only allow global shortcuts through the XDG portal.
 if (process.platform === 'linux') app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')
 
 /** @type {BrowserWindow | null} */
 let win = null
-// A file passed on the command line (`earwork song.mp3`), handed to the renderer once.
+// A file passed on the command line (`musikatu song.mp3`), handed to the renderer once.
 let initialFile = findAudioArg(process.argv)
 
 function findAudioArg(argv) {
@@ -32,7 +57,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 640,
     backgroundColor: '#0d0f13',
-    title: 'Earwork AI',
+    title: 'Musikatu',
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

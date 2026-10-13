@@ -79,7 +79,7 @@ export function ChordsTab(p: Props) {
   }
 
   const sheet = () => {
-    const lines = [`${p.fileName ?? 'Song'} — chord chart (Earwork AI)`, '']
+    const lines = [`${p.fileName ?? 'Song'} — chord chart (Musikatu)`, '']
     lines.push(
       segments
         .filter((s) => s.chord)

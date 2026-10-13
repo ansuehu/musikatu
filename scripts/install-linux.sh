@@ -4,8 +4,8 @@
 #   bash scripts/install-linux.sh --uninstall
 set -euo pipefail
 
-APP=earwork-ai
-NAME="Earwork AI"
+APP=musikatu
+NAME="Musikatu"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/release/linux-unpacked"
 DEST="${XDG_DATA_HOME:-$HOME/.local/share}/$APP"
@@ -14,6 +14,13 @@ DESKTOP="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$APP.desktop"
 ICON="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/$APP.png"
 SVG="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps/$APP.svg"
 
+# Earlier versions were installed as "Earwork AI" (earwork-ai): remove those so there aren't two launchers.
+remove_legacy() {
+  local d="${XDG_DATA_HOME:-$HOME/.local/share}"
+  rm -rf "$d/earwork-ai" "$HOME/.local/bin/earwork-ai" "$d/applications/earwork-ai.desktop" \
+    "$d/icons/hicolor/512x512/apps/earwork-ai.png" "$d/icons/hicolor/scalable/apps/earwork-ai.svg"
+}
+
 refresh() {
   command -v update-desktop-database >/dev/null && update-desktop-database -q "$(dirname "$DESKTOP")" || true
   command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" || true
@@ -21,12 +28,14 @@ refresh() {
 
 if [[ "${1:-}" == "--uninstall" ]]; then
   rm -rf "$DEST" "$BIN" "$DESKTOP" "$ICON" "$SVG"
+  remove_legacy
   refresh
   echo "Removed $NAME. Your models, stems cache and settings remain in ~/.config/$NAME (delete it to remove them too)."
   exit 0
 fi
 
 [[ -x "$SRC/$APP" ]] || { echo "Build first: npm run dist:dir" >&2; exit 1; }
+remove_legacy
 
 # Replace atomically so a running copy keeps working until it is restarted.
 rm -rf "$DEST.new"

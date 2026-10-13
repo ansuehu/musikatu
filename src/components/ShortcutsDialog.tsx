@@ -79,7 +79,7 @@ export function ShortcutsDialog(p: Props) {
         className={`bind ${active ? 'capturing' : ''} ${value ? '' : 'unset'} ${risky ? 'risky' : ''}`}
         disabled={field === 'global' && !p.globalEnabled}
         onClick={() => p.onCapture(active ? null : { id, field })}
-        title={risky ? 'Without Ctrl/Alt this key stops working in every other app while Earwork runs' : undefined}
+        title={risky ? 'Without Ctrl/Alt this key stops working in every other app while Musikatu runs' : undefined}
       >
         {active ? (field === 'midi' ? 'Press pedal / pad…' : 'Press keys…') : value || '—'}
       </Btn>

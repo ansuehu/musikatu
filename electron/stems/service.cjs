@@ -39,7 +39,7 @@ async function writeSettings(s) {
 
 function ensureWorker() {
   if (worker) return worker
-  worker = utilityProcess.fork(path.join(__dirname, 'separator-process.cjs'), [], { serviceName: 'Earwork stem separator' })
+  worker = utilityProcess.fork(path.join(__dirname, 'separator-process.cjs'), [], { serviceName: 'Musikatu stem separator' })
   worker.on('message', (msg) => {
     const job = jobs.get(msg.jobId)
     if (!job) return
@@ -313,7 +313,7 @@ function register(getWindow) {
     if (currentSeparation) throw new Error('Wait for the running separation to finish first.')
     await fsp.mkdir(to, { recursive: true })
     // fail early if we can't write there
-    const probe = path.join(to, `.earwork-write-test-${process.pid}`)
+    const probe = path.join(to, `.musikatu-write-test-${process.pid}`)
     await fsp.writeFile(probe, 'ok')
     await fsp.rm(probe, { force: true })
 

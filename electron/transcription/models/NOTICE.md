@@ -7,6 +7,6 @@
   Apache License 2.0 (full text in `LICENSE-basic-pitch.txt`).
   SHA-256 `2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec`
 
-Earwork reimplements the windowing (`electron/transcription/basic-pitch.cjs`) and note extraction
+Musikatu reimplements the windowing (`electron/transcription/basic-pitch.cjs`) and note extraction
 (`src/transcription/basicPitch.ts`) of basic-pitch 0.4.0, without pitch bends. On test audio the notes match the
 reference package exactly (start, end, pitch; amplitudes within 1e-7).

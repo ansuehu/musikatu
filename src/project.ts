@@ -47,7 +47,7 @@ export function projectKey(name: string, path: string | null, length: number): s
   return path ? `path:${path}` : `name:${name}:${length}`
 }
 
-const LOCAL_PREFIX = 'earwork.project.'
+const LOCAL_PREFIX = 'musikatu.project.'
 
 export async function loadProject(key: string): Promise<Partial<ProjectData> | null> {
   try {

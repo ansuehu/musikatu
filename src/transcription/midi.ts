@@ -122,7 +122,7 @@ function trackData(events: Event[]): number[] {
 }
 
 /** Format-1 MIDI: a conductor track (tempo map, meter) and one track per instrument. */
-export function writeMidi(tracks: MidiTrackInput[], grid: BeatGrid | null, sampleRate: number, title = 'Earwork transcription'): Uint8Array {
+export function writeMidi(tracks: MidiTrackInput[], grid: BeatGrid | null, sampleRate: number, title = 'Musikatu transcription'): Uint8Array {
   const map = tickMap(grid, sampleRate)
   const conductor: Event[] = [{ tick: 0, order: 0, bytes: text(0x03, title) }]
   for (const t of map.tempos) conductor.push({ tick: t.tick, order: 1, bytes: [0xff, 0x51, 3, (t.usPerQuarter >> 16) & 255, (t.usPerQuarter >> 8) & 255, t.usPerQuarter & 255] })

@@ -189,3 +189,22 @@ test('metronome settings: pitch, level and length follow the editor', async () =
   assert.ok(peak > 1.1 && peak <= 1.2, `peak ${peak}`) // 0.6 base × master 2
   assert.equal(m.busy, false) // 100 ms click finished within the 100 ms rendered
 })
+
+test('count-in: clicks on the beat at the slowed tempo, accents on the 1, then hands over', async () => {
+  const { CountIn } = await import('../src/dsp/CountIn.ts')
+  const c = new CountIn()
+  // a beat is 1000 source samples; at 50% speed that's 2000 output samples; 2 bars of 3
+  c.config = { enabled: true, beats: 6, accentEvery: 3, sourceInterval: 1000, eachLoop: false }
+  c.start(12345, 0.5, SR)
+  const clicks: [number, boolean][] = []
+  let startAt = -1
+  let rendered = 0
+  while (startAt < 0) {
+    startAt = c.step(128, (accent, offset) => clicks.push([rendered + offset, accent]))
+    if (startAt < 0) rendered += 128
+  }
+  assert.deepEqual(clicks.map(([t]) => t), [0, 2000, 4000, 6000, 8000, 10000])
+  assert.deepEqual(clicks.map(([, a]) => a), [true, false, false, true, false, false])
+  assert.equal(rendered + startAt, 12000) // playback begins exactly one beat after the last click
+  assert.equal(c.resumePos, 12345)
+})

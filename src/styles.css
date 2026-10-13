@@ -1444,3 +1444,68 @@ input[type='range']:disabled {
 .detection .metro-field .value {
   width: 44px;
 }
+
+/* ---------- practice ---------- */
+.practice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.practice-panel .metro-field .select {
+  height: 24px;
+  min-width: 0;
+}
+.trainer-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.panel-buttons .btn.countin {
+  padding: 0 8px;
+}
+.countin-label {
+  font: 700 11px ui-monospace, Menlo, monospace;
+  letter-spacing: -0.02em;
+}
+.panel-buttons .btn.countin.on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+.trainer-chip {
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--loop) 60%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--loop) 12%, transparent);
+  color: var(--loop);
+  font: 600 11px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+.countin-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 6;
+}
+.countin-overlay span {
+  font: 800 160px/1 Inter, system-ui, sans-serif;
+  color: var(--accent);
+  text-shadow: 0 8px 40px rgb(0 0 0 / 0.6);
+  animation: countpulse 0.45s ease-out;
+}
+@keyframes countpulse {
+  from {
+    transform: scale(1.35);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+}

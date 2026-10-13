@@ -32,6 +32,8 @@ export const ACTIONS: ActionDef[] = [
   { id: 'selectChord', label: 'Select the current chord (then L to loop)', group: 'Loops', key: 'C' },
   { id: 'selectBar', label: 'Select the current bar (then L to loop)', group: 'Loops', key: 'Shift+B' },
   { id: 'metronome', label: 'Metronome on / off', group: 'Speed & pitch', key: 'K', global: 'Ctrl+Alt+K' },
+  { id: 'countIn', label: 'Count-in on / off', group: 'Speed & pitch', key: 'I' },
+  { id: 'trainer', label: 'Speed trainer start / stop', group: 'Speed & pitch', key: 'R', global: 'Ctrl+Alt+R' },
   { id: 'loop', label: 'Cycle loop on / off', group: 'Loops', key: 'L', global: 'Ctrl+Alt+L' },
   { id: 'saveLoop', label: 'Save selection as loop', group: 'Loops', key: 'Shift+L' },
   { id: 'clearSelection', label: 'Clear selection', group: 'Loops', key: 'Escape' },

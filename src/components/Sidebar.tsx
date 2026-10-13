@@ -46,6 +46,7 @@ interface Props {
   chordsPanel: ReactNode
   gridPanel: ReactNode
   notesPanel: ReactNode
+  practicePanel: ReactNode
   stemsActive: boolean
 }
 
@@ -54,7 +55,7 @@ const TABS: { id: SidebarTab; label: string }[] = [
   { id: 'chords', label: 'Chords' },
   { id: 'notes', label: 'Notes' },
   { id: 'markers', label: 'Beats' },
-  { id: 'loops', label: 'Loops' },
+  { id: 'loops', label: 'Practice' },
   { id: 'eq', label: 'EQ' },
   { id: 'mix', label: 'Mix' },
 ]
@@ -225,6 +226,10 @@ function LoopsTab(p: Props) {
   const sr = p.sampleRate
   return (
     <div className="loops-tab">
+      {p.practicePanel}
+      <div className="section-title">
+        <span className="label">Saved loops</span>
+      </div>
       <Btn className="small" disabled={p.disabled || !p.selection} onClick={p.onLoopSave} title="Save the current selection (Shift+L)">
         Save selection as loop
       </Btn>

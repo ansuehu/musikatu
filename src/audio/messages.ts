@@ -1,5 +1,6 @@
 import type { ChannelMode } from '../dsp/ChannelMixer.ts'
 import type { MetronomeSettings } from '../dsp/Metronome.ts'
+import type { CountInConfig } from '../dsp/CountIn.ts'
 
 /** Messages between AudioEngine (main thread) and the stretch AudioWorklet. Positions are source samples. */
 export type ToProcessor =
@@ -17,7 +18,9 @@ export type ToProcessor =
   | { type: 'metronomePreview'; accent: boolean }
   | { type: 'notes'; starts: Float64Array; ends: Float64Array; midis: Uint8Array; velocities: Float32Array }
   | { type: 'noteSynth'; enabled: boolean; volume: number; muteSource: boolean }
+  | { type: 'countIn'; config: CountInConfig }
 
 export type FromProcessor =
-  | { type: 'pos'; pos: number; playing: boolean; seq: number }
+  | { type: 'pos'; pos: number; playing: boolean; seq: number; counting?: { beat: number; of: number } }
+  | { type: 'wrap'; seq: number }
   | { type: 'ended'; seq: number }

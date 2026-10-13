@@ -64,6 +64,11 @@ export class Metronome {
     this.voices.push(this.voice(accent, 0))
   }
 
+  /** Schedules one click `delay` samples into the next render (count-in). */
+  scheduleClick(accent: boolean, delay: number): void {
+    this.voices.push(this.voice(accent, delay))
+  }
+
   get busy(): boolean {
     return this.voices.length > 0
   }

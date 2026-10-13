@@ -2,11 +2,17 @@ import processorUrl from './stretch-processor.ts?worker&url'
 import type { FromProcessor, ToProcessor } from './messages.ts'
 import type { ChannelMode } from '../dsp/ChannelMixer.ts'
 import type { MetronomeSettings } from '../dsp/Metronome.ts'
+import type { CountInConfig } from '../dsp/CountIn.ts'
 import { EQ_FREQS, PASS_MAX_HZ, PASS_MIN_HZ, type EqState } from './eq.ts'
 
 export type Timbre = 'piano' | 'sine' | 'guitar'
 
-export type EngineEvent = { type: 'playing'; playing: boolean }
+export type EngineEvent =
+  | { type: 'playing'; playing: boolean }
+  /** Count-in progress: beat 1..of, or null when it ends. */
+  | { type: 'countin'; beat: number; of: number } | { type: 'countin'; beat: null }
+  /** A loop pass finished and playback wrapped to the loop start. */
+  | { type: 'wrap' }
 
 /**
  * Main-thread facade over the stretch worklet. All positions are in samples
@@ -263,13 +269,18 @@ export class AudioEngine {
     }
   }
 
+  setCountIn(config: CountInConfig): void {
+    this.post({ type: 'countIn', config })
+  }
+
   setVolume(v: number): void {
     this.gain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.015)
   }
 
   /** Playhead (samples) of the audio currently reaching the speakers, interpolated between worklet reports. */
   get position(): number {
-    if (!this.playing) return this.reportedPos
+    // during a count-in the playhead waits where playback will start
+    if (!this.playing || this.counting) return this.reportedPos
     const latency = (this.ctx.outputLatency || 0) + this.ctx.baseLatency
     let p = this.reportedPos + ((performance.now() - this.reportedAt) / 1000 - latency) * this.speed * this.sampleRate
     const { enabled, start, end } = this.loop
@@ -288,16 +299,31 @@ export class AudioEngine {
     this.node.port.postMessage(msg, transfer)
   }
 
+  private counting = false
+
   private onMessage(msg: FromProcessor): void {
     if (msg.seq !== this.seq) return // stale report from before a seek/play/load
+    if (msg.type === 'wrap') {
+      this.emit({ type: 'wrap' })
+      return
+    }
     if (msg.type === 'pos') {
       this.reportedPos = msg.pos
       this.reportedAt = performance.now()
+      const wasCounting = this.counting
+      this.counting = !!msg.counting
+      if (msg.counting) this.emit({ type: 'countin', beat: msg.counting.beat, of: msg.counting.of })
+      else if (wasCounting) this.emit({ type: 'countin', beat: null })
     } else if (msg.type === 'ended') {
       this.reportedPos = this.length
       this.setPlaying(false)
     }
   }
+
+  private emit(e: EngineEvent): void {
+    for (const fn of this.listeners) fn(e)
+  }
+
 
   private setPlaying(playing: boolean): void {
     if (this.playing === playing) return

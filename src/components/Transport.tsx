@@ -30,6 +30,10 @@ interface Props {
   grid: BeatGrid | null
   metronomeOn: boolean
   onMetronome: () => void
+  countInOn: boolean
+  onCountIn: () => void
+  trainer: { speed: number; to: number } | null
+  onTrainerStop: () => void
 }
 
 export function Transport(p: Props) {
@@ -83,11 +87,25 @@ export function Transport(p: Props) {
         >
           <MetronomeIcon />
         </Btn>
+        <Btn
+          className={`countin ${p.countInOn ? 'on' : ''}`}
+          onClick={p.onCountIn}
+          disabled={p.disabled}
+          title="Count-in: a bar of clicks before playback starts (I) — settings in the Practice tab"
+          aria-pressed={p.countInOn}
+        >
+          <span className="countin-label">1·2·3·4</span>
+        </Btn>
       </section>
 
       <section className="panel panel-speed">
         <div className="panel-head">
           <span className="label">Speed</span>
+          {p.trainer && (
+            <button type="button" className="trainer-chip" onMouseDown={(e) => e.preventDefault()} onClick={p.onTrainerStop} title="Speed trainer running — click to stop (R)">
+              ▲ trainer → {Math.round(p.trainer.to * 100)}%
+            </button>
+          )}
           <span className="readout">{Math.round(p.speed * 100)}%</span>
         </div>
         <Slider

@@ -88,6 +88,17 @@ npm run dist:dir         # unpacked app only, quick to check
 - **Fixing the grid:** move the downbeat ±1 beat, ½× / 2× tempo, change the meter, "Bar 1 here". Corrections are saved with the song.
 - **Chord chart:** chord changes snap onto beats, chord rows show bar.beat, and the exported sheet has a bar-by-bar section (`| C | Am | F G |`, with `%` for repeated bars).
 
+**Practice tools (Practice tab)**
+- **Count-in** (`I`, or the *1·2·3·4* transport button): one or two bars of clicks before playback starts.
+  - It plays at the song's tempo at your current speed, with your metronome sounds, while a big countdown shows on screen; the playhead waits where you pressed play.
+  - Optionally it counts in again before every loop repeat, giving you time to reset your hands.
+  - Rendered in the audio thread, so the clicks are sample-accurate.
+- **Speed trainer** (`R`): loops the selection, starting at, say, 60% and raising the speed by a step every N passes up to a target.
+  - At the target it keeps looping, starts over, or stops.
+  - A badge in the speed panel shows it's running; the Practice tab shows the pass count and progress.
+  - Works together with the count-in and the metronome.
+- **Click track:** the metronome (Beats tab).
+
 **Audio → notes / MIDI (Notes tab and piano roll)**
 - Transcribes any separated stem (vocals, bass, guitar, piano/keys, other) or the full mix into notes.
   - Uses Spotify's **Basic Pitch**, a 230 KB model bundled with the app, on CPU: about 1.6 s for a 3:42 song.
@@ -132,7 +143,7 @@ npm run dist:dir         # unpacked app only, quick to check
 | --- | --- |
 | `Space` play/pause · `S` stop · `Home` to start | `←`/`→` ±1 s · `Shift+←/→` ±5 s · `,`/`.` previous/next marker |
 | `L` loop on/off · `Shift+L` save loop · `1`–`9` recall · `Esc` clear | `H` half speed · `[`/`]` speed ±5% · `Shift+↑/↓` pitch ±1 st |
-| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord · `PageUp`/`PageDown` bars · `Shift+B` select bar · `K` metronome · `↑`/`↓`/`Del` edit selected notes | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
+| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord · `PageUp`/`PageDown` bars · `Shift+B` select bar · `K` metronome · `↑`/`↓`/`Del` edit selected notes · `I` count-in · `R` speed trainer | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
 
 ## Stem separation: performance
 

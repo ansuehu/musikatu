@@ -35,6 +35,9 @@ import { useTranscription } from './transcription/useTranscription'
 import { GM_PROGRAM, writeMidi } from './transcription/midi'
 import { SOURCE_LABEL, type NoteTrack } from './transcription/types'
 import { midiToFreq } from './analysis/notes'
+import { PracticePanel, type CountInPrefs } from './components/PracticePanel'
+import { DEFAULT_TRAINER, onLoopPass, startTrainer, type TrainerSettings, type TrainerState } from './practice/trainer'
+import { medianBeatSpacing } from './rhythm/grid'
 import type { AudioFilePayload, Selection, View } from './types'
 
 interface LoadedFile {
@@ -63,6 +66,8 @@ interface Prefs {
   snapToBeats: boolean
   showPianoRoll: boolean
   noteSynth: SynthPrefs
+  countIn: CountInPrefs
+  trainer: TrainerSettings
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -80,6 +85,8 @@ const DEFAULT_PREFS: Prefs = {
   snapToBeats: true,
   showPianoRoll: true,
   noteSynth: { volume: 0.7, muteSource: false },
+  countIn: { enabled: false, bars: 1, eachLoop: false },
+  trainer: DEFAULT_TRAINER,
 }
 
 function loadPrefs(): Prefs {
@@ -141,6 +148,10 @@ export default function App() {
   const [snapToBeats, setSnapToBeats] = useState(initialPrefs.snapToBeats)
   const [showPianoRoll, setShowPianoRoll] = useState(initialPrefs.showPianoRoll)
   const [noteSynth, setNoteSynth] = useState<SynthPrefs>(initialPrefs.noteSynth)
+  const [countIn, setCountIn] = useState<CountInPrefs>(initialPrefs.countIn)
+  const [trainerSettings, setTrainerSettings] = useState<TrainerSettings>(initialPrefs.trainer)
+  const [trainer, setTrainer] = useState<TrainerState | null>(null)
+  const [countInBeat, setCountInBeat] = useState<{ beat: number; of: number } | null>(null)
   // shortcuts
   const [bindings, setBindingsRaw] = useState<Bindings>(loadBindings)
   const [globalEnabled, setGlobalEnabledRaw] = useState(loadGlobalEnabled)
@@ -174,7 +185,17 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => engine?.subscribe((e) => setPlaying(e.playing)), [engine])
+  // wrap events drive the speed trainer; handled through a ref so the subscription stays put
+  const onWrapRef = useRef<() => void>(() => {})
+  useEffect(
+    () =>
+      engine?.subscribe((e) => {
+        if (e.type === 'playing') setPlaying(e.playing)
+        else if (e.type === 'countin') setCountInBeat(e.beat === null ? null : { beat: e.beat, of: e.of })
+        else if (e.type === 'wrap') onWrapRef.current()
+      }),
+    [engine],
+  )
   useEffect(() => engine?.setSpeed(speed), [engine, speed])
   useEffect(() => engine?.setPitch(semitones, cents), [engine, semitones, cents])
   useEffect(() => engine?.setVolume(volume), [engine, volume])
@@ -190,13 +211,13 @@ export default function App() {
 
   // ---- persistence ----
   useEffect(() => {
-    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth }
+    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainer: trainerSettings }
     try {
       localStorage.setItem('earwork.prefs.v1', JSON.stringify(prefs))
     } catch {
       /* ignore */
     }
-  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth])
+  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainerSettings])
 
   useEffect(() => {
     if (!projectId) return
@@ -530,6 +551,45 @@ export default function App() {
     [beatGrid, engine, length, sampleRate],
   )
 
+  // ---- practice: count-in and speed trainer ----
+  const meter = beatGrid?.meter ?? 4
+  useEffect(() => {
+    engine?.setCountIn({
+      enabled: countIn.enabled,
+      beats: countIn.bars * meter,
+      accentEvery: meter,
+      sourceInterval: beatGrid ? medianBeatSpacing(beatGrid) : 0,
+      eachLoop: countIn.eachLoop,
+    })
+  }, [engine, countIn, meter, beatGrid])
+  useEffect(() => {
+    if (!playing) setCountInBeat(null)
+  }, [playing])
+
+  const trainerRef = useRef({ trainer, trainerSettings })
+  trainerRef.current = { trainer, trainerSettings }
+  onWrapRef.current = () => {
+    const { trainer: st, trainerSettings: s } = trainerRef.current
+    if (!st?.active) return
+    const next = onLoopPass(st, s)
+    setTrainer(next)
+    if (next.speed !== st.speed) setSpeed(next.speed)
+    if (next.stop) engine?.pause()
+  }
+  const startTrainerSession = useCallback(() => {
+    if (!engine || !length) return
+    const region = selection ?? { start: 0, end: length }
+    if (!selection) setSelection(region)
+    setLoopOn(true)
+    setSpeed(trainerSettings.from)
+    setTrainer(startTrainer(trainerSettings))
+    engine.seek(region.start)
+    if (!engine.isPlaying) engine.play()
+  }, [engine, length, selection, trainerSettings])
+  const stopTrainerSession = useCallback(() => setTrainer((t) => (t ? { ...t, active: false } : t)), [])
+  // a new song ends any session
+  useEffect(() => setTrainer(null), [file])
+
   // ---- audio → notes ----
   // Re-detected notes get new indices, so a selection by index no longer means anything.
   const replaceNoteTracks = useCallback((fn: (t: NoteTrack[]) => NoteTrack[]) => {
@@ -696,6 +756,8 @@ export default function App() {
         case 'prevBar': return jumpBar(-1)
         case 'nextBar': return jumpBar(1)
         case 'metronome': return setMetronome((m) => ({ ...m, on: !m.on }))
+        case 'countIn': return setCountIn((c) => ({ ...c, enabled: !c.enabled }))
+        case 'trainer': return trainer?.active ? stopTrainerSession() : startTrainerSession()
         case 'selectBar': {
           if (!beatGrid || !engine) return
           const r = barRange(beatGrid, positionInfo(beatGrid, engine.position).bar, length)
@@ -917,6 +979,11 @@ export default function App() {
             </div>
           )}
           {dragOver && <div className="drop-overlay">Drop to open</div>}
+          {countInBeat && countInBeat.beat > 0 && (
+            <div className="countin-overlay" aria-live="assertive">
+              <span key={countInBeat.beat}>{((countInBeat.beat - 1) % meter) + 1}</span>
+            </div>
+          )}
         </main>
 
         {sidebarOpen && (
@@ -975,6 +1042,21 @@ export default function App() {
                 snap={snapToBeats}
                 onSnap={setSnapToBeats}
                 onLoopBars={loopBars}
+              />
+            }
+            practicePanel={
+              <PracticePanel
+                countIn={countIn}
+                onCountIn={setCountIn}
+                hasGrid={!!beatGrid}
+                meter={meter}
+                trainer={trainerSettings}
+                onTrainer={setTrainerSettings}
+                state={trainer}
+                onStart={startTrainerSession}
+                onStop={stopTrainerSession}
+                hasFile={!!file}
+                loopReady={!!selection}
               />
             }
             notesPanel={
@@ -1079,6 +1161,10 @@ export default function App() {
         onCents={setCents}
         grid={beatGrid}
         metronomeOn={metronome.on}
+        countInOn={countIn.enabled}
+        onCountIn={() => setCountIn((c) => ({ ...c, enabled: !c.enabled }))}
+        trainer={trainer?.active ? { speed: trainer.speed, to: trainerSettings.to } : null}
+        onTrainerStop={stopTrainerSession}
         onMetronome={() => setMetronome((m) => ({ ...m, on: !m.on }))}
       />
 

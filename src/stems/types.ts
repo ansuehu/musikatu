@@ -91,6 +91,31 @@ export type StemsEvent =
   | { type: 'phase'; phase: 'benchmark' | 'loading'; device?: string }
   | { type: 'progress'; done: number; total: number; ep: string; label: string; elapsed: number }
   | { type: 'notice'; text: string }
+  | { type: 'cacheMove'; done: number; total: number }
+
+export interface CacheEntry {
+  /** Folder name in the cache. */
+  id: string
+  /** Project key of the song (null for an unreadable entry). */
+  key: string | null
+  name: string
+  sourcePath: string | null
+  /** Whether the original audio file is still where it was (null if unknown). */
+  sourceExists: boolean | null
+  bytes: number
+  createdAt: string | null
+  backend: string | null
+  seconds: number | null
+  duration: number | null
+  /** False for a leftover from an interrupted run or an older model. */
+  complete: boolean
+}
+
+export interface CacheDirInfo {
+  dir: string
+  isDefault: boolean
+  defaultDir: string
+}
 
 export interface StemsApi {
   info(): Promise<StemsInfo>
@@ -104,5 +129,11 @@ export interface StemsApi {
   load(key: string): Promise<{ meta: StemsMeta; stems: { name: string; data: Uint8Array }[] } | null>
   exportStems(key: string, baseName: string): Promise<string | null>
   clearCache(): Promise<number>
+  cacheList(): Promise<CacheEntry[]>
+  cacheDelete(id: string): Promise<void>
+  cacheDir(): Promise<CacheDirInfo>
+  chooseCacheDir(): Promise<CacheDirInfo | null>
+  resetCacheDir(): Promise<CacheDirInfo>
+  openCacheDir(): Promise<string>
   onEvent(callback: (e: StemsEvent) => void): () => void
 }

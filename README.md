@@ -58,6 +58,10 @@ npm run dist:dir         # unpacked app only, quick to check
   - *Stems / Original* (`Shift+S`) A/B-compares against the untouched recording.
   - Soloing one stem shows its waveform, and the spectrum, note and chord detection follow what you hear.
 - Stems are cached per song (16-bit WAV) and reload instantly; the mixer settings are saved with the project. *Export WAVs…* writes the six stems anywhere.
+- **Stem cache** (bottom of the Stems tab):
+  - Lists every cached song: size, length, date and backend, with a "this song" badge for the open one, and warnings when the original file has moved or an entry is incomplete. Each song can be deleted on its own.
+  - The cache folder can be changed (e.g. to a bigger disk): existing stems are moved there (renamed on the same disk, copied then removed across disks), and *Use default* moves them back.
+  - Only the app's own stem folders are ever moved or deleted, so a shared folder is safe.
 
 **Chord chart (Chords tab and the chord row above the waveform)**
 - Every song is charted automatically in about a second, in a background worker. Once stems exist, it re-charts from the instruments only (no vocals or drums), which is cleaner.

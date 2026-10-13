@@ -494,7 +494,9 @@ export default function App() {
   const stems = stemsCtl.stems
   const stemsActive = !!stems && stemMix.enabled
   useEffect(() => {
-    if (!engine || !stems) return
+    if (!engine) return
+    // no stems (or they were just deleted): play the original recording
+    if (!stems) return engine.setGains([1, ...STEM_NAMES.map(() => 0)])
     const g = stemGains(stemMix)
     engine.setGains(stemMix.enabled ? [0, ...STEM_NAMES.map((n) => g[n])] : [1, ...STEM_NAMES.map(() => 0)])
   }, [engine, stems, stemMix])
@@ -1134,6 +1136,7 @@ export default function App() {
                 duration={file?.buffer.duration ?? 0}
                 mix={stemMix}
                 onMix={setStemMix}
+                projectId={projectId}
               />
             }
           />

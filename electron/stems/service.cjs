@@ -1,13 +1,18 @@
 // Main-process side of stem separation: model management, device choice, the inference
 // utility process, the per-file stems cache, and the IPC surface for the renderer.
-const { app, dialog, ipcMain, utilityProcess } = require('electron')
+const { app, dialog, ipcMain, shell, utilityProcess } = require('electron')
 const path = require('node:path')
 const fsp = require('node:fs/promises')
 const crypto = require('node:crypto')
 const model = require('./model.cjs')
 
 const settingsPath = () => path.join(app.getPath('userData'), 'stems-settings.json')
-const cacheRoot = () => path.join(app.getPath('userData'), 'stems')
+const defaultCacheRoot = () => path.join(app.getPath('userData'), 'stems')
+/** User-chosen cache folder (from settings), or null for the default. Loaded in register(). */
+let customCacheRoot = null
+const cacheRoot = () => customCacheRoot ?? defaultCacheRoot()
+/** Cache entries are folders named by the SHA-1 of the song's project key. */
+const ENTRY_RE = /^[0-9a-f]{40}$/
 const cacheDir = (key) => path.join(cacheRoot(), crypto.createHash('sha1').update(String(key)).digest('hex'))
 
 const GPU_BACKEND_LABEL = { cuda: 'CUDA', dml: 'DirectML', webgpu: 'WebGPU', coreml: 'Core ML', cpu: 'CPU' }
@@ -66,6 +71,21 @@ function runJob(message, onProgress, transfer) {
   })
 }
 
+/** Names of the cache entry folders in the cache root (never anything else that lives there). */
+async function cacheEntries() {
+  try {
+    return (await fsp.readdir(cacheRoot(), { withFileTypes: true })).filter((d) => d.isDirectory() && ENTRY_RE.test(d.name)).map((d) => d.name)
+  } catch {
+    return []
+  }
+}
+
+async function cacheBytes() {
+  let total = 0
+  for (const id of await cacheEntries()) total += await dirSize(path.join(cacheRoot(), id))
+  return total
+}
+
 async function dirSize(dir) {
   let total = 0
   try {
@@ -95,6 +115,10 @@ async function resolveDevice(preference, send) {
 }
 
 function register(getWindow) {
+  // a custom cache folder survives restarts; ignore it if it has disappeared (e.g. an unplugged drive)
+  void readSettings().then(async (s) => {
+    if (s.cacheDir && (await fsp.access(s.cacheDir).then(() => true, () => false))) customCacheRoot = s.cacheDir
+  })
   const send = (event) => getWindow()?.webContents.send('stems:event', event)
 
   ipcMain.handle('stems:info', async () => {
@@ -106,7 +130,7 @@ function register(getWindow) {
       preference: settings.preference,
       benchmark: settings.benchmark,
       platform: process.platform,
-      cacheBytes: await dirSize(cacheRoot()),
+      cacheBytes: await cacheBytes(),
     }
   })
 
@@ -236,9 +260,110 @@ function register(getWindow) {
     return r.filePaths[0]
   })
 
+  // ---- cache management ----
+  ipcMain.handle('stems:cacheList', async () => {
+    const root = cacheRoot()
+    const names = await cacheEntries()
+    const entries = []
+    for (const id of names) {
+      const dir = path.join(root, id)
+      let meta = null
+      try {
+        meta = JSON.parse(await fsp.readFile(path.join(dir, 'meta.json'), 'utf8'))
+      } catch {
+        /* an unfinished or foreign folder: still listed so it can be deleted */
+      }
+      const key = meta?.key ?? null
+      const sourcePath = typeof key === 'string' && key.startsWith('path:') ? key.slice(5) : null
+      const name = sourcePath ? path.basename(sourcePath) : typeof key === 'string' && key.startsWith('name:') ? key.slice(5).replace(/:\d+$/, '') : 'Unknown song'
+      let sourceExists = null
+      if (sourcePath) sourceExists = await fsp.access(sourcePath).then(() => true, () => false)
+      entries.push({
+        id,
+        key,
+        name,
+        sourcePath,
+        sourceExists,
+        bytes: await dirSize(dir),
+        createdAt: meta?.createdAt ?? null,
+        backend: meta?.backend ?? null,
+        seconds: meta?.seconds ?? null,
+        duration: meta ? meta.length / meta.sampleRate : null,
+        complete: !!meta && meta.modelSha === model.MODEL.sha256,
+      })
+    }
+    return entries.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+  })
+
+  ipcMain.handle('stems:cacheDelete', async (_e, id) => {
+    if (typeof id !== 'string' || !ENTRY_RE.test(id)) throw new Error('Bad cache entry')
+    if (currentSeparation && cacheDir(currentSeparation.key).endsWith(id)) throw new Error('That song is being separated right now.')
+    await fsp.rm(path.join(cacheRoot(), id), { recursive: true, force: true })
+  })
+
+  const cacheDirInfo = () => ({ dir: cacheRoot(), isDefault: customCacheRoot === null, defaultDir: defaultCacheRoot() })
+  ipcMain.handle('stems:cacheDir', () => cacheDirInfo())
+
+  /** Moves every cache entry from the current folder to `target`, then makes `target` the cache folder. */
+  async function relocate(target) {
+    const from = cacheRoot()
+    const to = path.resolve(target)
+    if (path.resolve(from) === to) return cacheDirInfo()
+    if (to.startsWith(path.resolve(from) + path.sep)) throw new Error('The new folder can’t be inside the current cache folder.')
+    if (currentSeparation) throw new Error('Wait for the running separation to finish first.')
+    await fsp.mkdir(to, { recursive: true })
+    // fail early if we can't write there
+    const probe = path.join(to, `.earwork-write-test-${process.pid}`)
+    await fsp.writeFile(probe, 'ok')
+    await fsp.rm(probe, { force: true })
+
+    const names = await cacheEntries()
+    for (let i = 0; i < names.length; i++) {
+      const src = path.join(from, names[i])
+      const dst = path.join(to, names[i])
+      getWindow()?.webContents.send('stems:event', { type: 'cacheMove', done: i, total: names.length })
+      await fsp.rm(dst, { recursive: true, force: true })
+      try {
+        await fsp.rename(src, dst)
+      } catch (err) {
+        if (err.code !== 'EXDEV') throw err
+        // different disk: copy, then remove the original
+        await fsp.cp(src, dst, { recursive: true })
+        await fsp.rm(src, { recursive: true, force: true })
+      }
+    }
+    customCacheRoot = to === path.resolve(defaultCacheRoot()) ? null : to
+    await writeSettings({ ...(await readSettings()), cacheDir: customCacheRoot })
+    getWindow()?.webContents.send('stems:event', { type: 'cacheMove', done: names.length, total: names.length })
+    return cacheDirInfo()
+  }
+
+  ipcMain.handle('stems:chooseCacheDir', async () => {
+    const r = await dialog.showOpenDialog(getWindow(), {
+      title: 'Choose a folder for separated stems',
+      defaultPath: cacheRoot(),
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (r.canceled || !r.filePaths[0]) return null
+    return relocate(r.filePaths[0])
+  })
+
+  ipcMain.handle('stems:resetCacheDir', () => relocate(defaultCacheRoot()))
+
+  ipcMain.handle('stems:openCacheDir', async () => {
+    await fsp.mkdir(cacheRoot(), { recursive: true })
+    return shell.openPath(cacheRoot())
+  })
+
   ipcMain.handle('stems:clearCache', async () => {
-    const bytes = await dirSize(cacheRoot())
-    await fsp.rm(cacheRoot(), { recursive: true, force: true })
+    // Only our own entries: the folder may be one the user chose and share with other files.
+    let bytes = 0
+    for (const id of await cacheEntries()) {
+      if (currentSeparation && cacheDir(currentSeparation.key).endsWith(id)) continue
+      const dir = path.join(cacheRoot(), id)
+      bytes += await dirSize(dir)
+      await fsp.rm(dir, { recursive: true, force: true })
+    }
     return bytes
   })
 

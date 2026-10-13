@@ -1509,3 +1509,83 @@ input[type='range']:disabled {
     opacity: 0.9;
   }
 }
+
+/* ---------- stem cache ---------- */
+.cache-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.cache-dir {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cache-path {
+  display: block;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font: 11px ui-monospace, Menlo, monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* keep the end of a long path visible */
+  text-align: left;
+  user-select: text;
+}
+.cache-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.cache-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+.cache-list li.current {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.cache-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cache-name {
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cache-path span {
+  unicode-bidi: embed;
+}
+.badge {
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+.warning-text {
+  color: var(--loop);
+}

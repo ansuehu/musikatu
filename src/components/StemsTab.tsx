@@ -3,6 +3,7 @@ import { rangeOf, type Peaks } from '../waveform/peaks'
 import { DEFAULT_STEM_MIX, STEM_COLORS, STEM_LABELS, STEM_NAMES, type Device, type StemMix, type StemName } from '../stems/types'
 import type { StemsController } from '../stems/useStems'
 import { Btn, Slider } from './Controls'
+import type { CacheEntry } from '../stems/types'
 
 interface Props {
   ctl: StemsController
@@ -12,6 +13,8 @@ interface Props {
   duration: number
   mix: StemMix
   onMix: (m: StemMix) => void
+  /** Project key of the open song, to mark it in the cache list. */
+  projectId: string | null
 }
 
 const SEGMENT_S = 7.8
@@ -48,7 +51,7 @@ function MiniWave({ peaks, color, dim }: { peaks: Peaks; color: string; dim: boo
   return <canvas ref={ref} className={`mini-wave ${dim ? 'dim' : ''}`} />
 }
 
-export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix }: Props) {
+export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix, projectId }: Props) {
   const { info, status, stems } = ctl
   const [exported, setExported] = useState<string | null>(null)
 
@@ -234,12 +237,7 @@ export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix }: Props
         </>
       )}
 
-      <div className="stems-foot">
-        <span className="muted small-text">Stem cache: {fmtBytes(info.cacheBytes)}</span>
-        <Btn className="small" disabled={busy || info.cacheBytes === 0} onClick={() => void ctl.clearCache()}>
-          Clear
-        </Btn>
-      </div>
+      <CacheSection ctl={ctl} projectId={projectId} busy={busy} />
       <p className="muted small-text">{info.model.credit}</p>
     </div>
   )
@@ -287,5 +285,97 @@ function Progress({ status, onCancel }: { status: StemsController['status']; onC
         )}
       </div>
     </div>
+  )
+}
+
+const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '')
+
+/** Cached songs (with per-song delete) and the cache folder, which can be moved. */
+function CacheSection({ ctl, projectId, busy }: { ctl: StemsController; projectId: string | null; busy: boolean }) {
+  const { cache, cacheDirInfo: dir, cacheMove } = ctl
+  const total = (cache ?? []).reduce((s, e) => s + e.bytes, 0)
+  const moving = !!cacheMove
+  return (
+    <div className="cache-section">
+      <div className="section-title">
+        <span className="label">Stem cache</span>
+        <Btn className="small" onClick={ctl.openCacheDir} title="Open the cache folder in your file manager">
+          Open folder
+        </Btn>
+      </div>
+
+      {dir && (
+        <div className="cache-dir">
+          <code className="cache-path" title={dir.dir}>
+            {/* the container is right-to-left so a long path keeps its end visible; the text itself stays left-to-right */}
+            <span dir="ltr">{dir.dir}</span>
+          </code>
+          <div className="button-row">
+            <Btn className="small" disabled={busy || moving} onClick={() => void ctl.moveCache('choose')} title="Pick another folder (e.g. a bigger disk); cached stems are moved there">
+              Change…
+            </Btn>
+            {!dir.isDefault && (
+              <Btn className="small" disabled={busy || moving} onClick={() => void ctl.moveCache('default')} title={`Move back to ${dir.defaultDir}`}>
+                Use default
+              </Btn>
+            )}
+          </div>
+        </div>
+      )}
+      {moving && (
+        <div className="progress-block">
+          <div className="progress">
+            <div style={{ width: `${(cacheMove!.done / Math.max(1, cacheMove!.total)) * 100}%` }} />
+          </div>
+          <span className="muted small-text">
+            Moving cached songs… {cacheMove!.done}/{cacheMove!.total}
+          </span>
+        </div>
+      )}
+
+      {cache && cache.length === 0 && <p className="muted small-text">Nothing cached yet. Separated songs are kept here so they reopen instantly.</p>}
+      {cache && cache.length > 0 && (
+        <ul className="cache-list">
+          {cache.map((e) => (
+            <CacheRow key={e.id} entry={e} current={!!projectId && e.key === projectId} disabled={busy || moving} onDelete={() => void ctl.deleteCached(e)} />
+          ))}
+        </ul>
+      )}
+
+      <div className="stems-foot">
+        <span className="muted small-text">
+          {cache?.length ?? 0} song{cache?.length === 1 ? '' : 's'} · {fmtBytes(total)}
+        </span>
+        <Btn
+          className="small"
+          disabled={busy || moving || !cache?.length}
+          onClick={() => {
+            if (window.confirm(`Delete the separated stems of all ${cache?.length} songs (${fmtBytes(total)})? You can separate them again later.`)) void ctl.clearCache()
+          }}
+        >
+          Clear all
+        </Btn>
+      </div>
+    </div>
+  )
+}
+
+function CacheRow({ entry: e, current, disabled, onDelete }: { entry: CacheEntry; current: boolean; disabled: boolean; onDelete: () => void }) {
+  const details = [fmtBytes(e.bytes), e.duration ? fmtSecs(e.duration) : null, fmtDate(e.createdAt), e.backend].filter(Boolean).join(' · ')
+  return (
+    <li className={current ? 'current' : ''} title={e.sourcePath ?? undefined}>
+      <div className="cache-main">
+        <span className="cache-name">{e.name}</span>
+        <span className="muted small-text">
+          {current && <span className="badge">this song</span>}
+          {details}
+        </span>
+        {e.sourceExists === false && <span className="warning-text small-text">Original file not found at its old location</span>}
+        {!e.complete && <span className="warning-text small-text">Incomplete or from an older model — safe to delete</span>}
+      </div>
+      <Btn className="small icon" disabled={disabled} onClick={onDelete} title={current ? 'Delete these stems (the song goes back to the original recording)' : 'Delete these stems'}>
+        ×
+      </Btn>
+    </li>
   )
 }

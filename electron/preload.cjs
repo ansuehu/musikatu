@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('api', {
     load: (key) => ipcRenderer.invoke('stems:load', key),
     exportStems: (key, baseName) => ipcRenderer.invoke('stems:export', { key, baseName }),
     clearCache: () => ipcRenderer.invoke('stems:clearCache'),
+    cacheList: () => ipcRenderer.invoke('stems:cacheList'),
+    cacheDelete: (id) => ipcRenderer.invoke('stems:cacheDelete', id),
+    cacheDir: () => ipcRenderer.invoke('stems:cacheDir'),
+    chooseCacheDir: () => ipcRenderer.invoke('stems:chooseCacheDir'),
+    resetCacheDir: () => ipcRenderer.invoke('stems:resetCacheDir'),
+    openCacheDir: () => ipcRenderer.invoke('stems:openCacheDir'),
     onEvent: (callback) => subscribe('stems:event', callback),
   },
 })

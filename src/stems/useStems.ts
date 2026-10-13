@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AudioEngine } from '../audio/AudioEngine'
 import { buildPeaks, type Peaks } from '../waveform/peaks'
-import { STEM_NAMES, type Benchmark, type Device, type StemName, type StemsInfo, type StemsMeta } from './types'
+import { STEM_NAMES, type Benchmark, type CacheDirInfo, type CacheEntry, type Device, type StemName, type StemsInfo, type StemsMeta } from './types'
 
 export interface LoadedStem {
   name: StemName
@@ -51,6 +51,9 @@ export function useStems({ engine, buffer, projectId }: Args) {
   const [status, setStatus] = useState<StemsStatus>({ kind: 'idle' })
   const [stems, setStems] = useState<LoadedStem[] | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [cache, setCache] = useState<CacheEntry[] | null>(null)
+  const [cacheDirInfo, setCacheDirInfo] = useState<CacheDirInfo | null>(null)
+  const [cacheMove, setCacheMove] = useState<{ done: number; total: number } | null>(null)
   // Guards async work against the user switching files mid-way.
   const token = useRef(0)
 
@@ -62,6 +65,17 @@ export function useStems({ engine, buffer, projectId }: Args) {
     void refreshInfo()
   }, [refreshInfo])
 
+  const refreshCache = useCallback(async () => {
+    if (!api) return
+    const [list, dir] = await Promise.all([api.cacheList(), api.cacheDir()])
+    setCache(list)
+    setCacheDirInfo(dir)
+  }, [api])
+
+  useEffect(() => {
+    void refreshCache()
+  }, [refreshCache])
+
   useEffect(() => {
     if (!api) return
     return api.onEvent((e) => {
@@ -69,6 +83,7 @@ export function useStems({ engine, buffer, projectId }: Args) {
       else if (e.type === 'phase') setStatus(e.phase === 'benchmark' ? { kind: 'benchmark' } : { kind: 'loading', device: e.device ?? '' })
       else if (e.type === 'progress') setStatus({ kind: 'running', done: e.done, total: e.total, label: e.label, elapsed: e.elapsed })
       else if (e.type === 'notice') setNotice(e.text)
+      else if (e.type === 'cacheMove') setCacheMove(e.done < e.total ? { done: e.done, total: e.total } : null)
     })
   }, [api])
 
@@ -116,12 +131,13 @@ export function useStems({ engine, buffer, projectId }: Args) {
       if (my !== token.current) return
       if (!(await attach(projectId, my))) throw new Error('The separated stems could not be loaded.')
       void refreshInfo()
+      void refreshCache()
     } catch (err) {
       if (my !== token.current) return
       const message = String(err instanceof Error ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
       setStatus(/Cancelled/.test(message) ? { kind: 'idle' } : { kind: 'error', message })
     }
-  }, [api, buffer, projectId, info, attach, refreshInfo])
+  }, [api, buffer, projectId, info, attach, refreshInfo, refreshCache])
 
   const cancel = useCallback(async () => {
     await api?.cancel()
@@ -170,11 +186,54 @@ export function useStems({ engine, buffer, projectId }: Args) {
     }
   }, [api, refreshInfo])
 
+
+  /** The open song's stems were deleted from disk: unload them so nothing points at missing files. */
+  const unloadCurrent = useCallback(() => {
+    token.current++
+    setStems(null)
+    setStatus({ kind: 'idle' })
+  }, [])
+
   const clearCache = useCallback(async () => {
     if (!api) return
     await api.clearCache()
+    unloadCurrent()
     void refreshInfo()
-  }, [api, refreshInfo])
+    void refreshCache()
+  }, [api, refreshInfo, refreshCache, unloadCurrent])
+
+  const deleteCached = useCallback(
+    async (entry: CacheEntry) => {
+      if (!api) return
+      try {
+        await api.cacheDelete(entry.id)
+      } catch (err) {
+        setNotice(String(err instanceof Error ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+        return
+      }
+      if (entry.key && entry.key === projectId) unloadCurrent()
+      void refreshInfo()
+      void refreshCache()
+    },
+    [api, projectId, refreshInfo, refreshCache, unloadCurrent],
+  )
+
+  const moveCache = useCallback(
+    async (to: 'choose' | 'default') => {
+      if (!api) return
+      try {
+        const r = to === 'choose' ? await api.chooseCacheDir() : await api.resetCacheDir()
+        if (r) setCacheDirInfo(r)
+      } catch (err) {
+        setNotice(`Couldn’t move the cache: ${String(err instanceof Error ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`)
+      } finally {
+        setCacheMove(null)
+        void refreshInfo()
+        void refreshCache()
+      }
+    },
+    [api, refreshInfo, refreshCache],
+  )
 
   return {
     available: !!api,
@@ -191,6 +250,13 @@ export function useStems({ engine, buffer, projectId }: Args) {
     setPreference,
     rebenchmark,
     clearCache,
+    cache,
+    cacheDirInfo,
+    cacheMove,
+    refreshCache,
+    deleteCached,
+    moveCache,
+    openCacheDir: () => void api?.openCacheDir(),
     exportStems: (baseName: string) => (projectId && api ? api.exportStems(projectId, baseName) : Promise.resolve(null)),
   }
 }

@@ -45,6 +45,10 @@ export class StretchEngine {
   private readonly norm: number
 
   private source: Float32Array[] = []
+  /** Extra sources (e.g. separated stems) mixed into the input before stretching. */
+  private layers: Float32Array[][] = []
+  /** Gain per source: index 0 is the main source, then one per layer. */
+  private gains = new Float32Array([1])
   private _length = 0
 
   private speed = 1
@@ -111,6 +115,8 @@ export class StretchEngine {
 
   setSource(channels: Float32Array[]): void {
     this.source = channels
+    this.layers = []
+    this.gains = new Float32Array([1])
     this._length = channels[0]?.length ?? 0
     const n = channels.length
     this.prevPhase = Array.from({ length: n }, () => new Float64Array(this.bins))
@@ -119,6 +125,19 @@ export class StretchEngine {
     this.fifo = Array.from({ length: n }, () => new Float32Array(FIFO_SIZE))
     this.loopOn = false
     this.reset(0)
+  }
+
+  /** Adds sources of the same length as the main one; they start silent until setGains. */
+  addLayers(layers: Float32Array[][]): void {
+    this.layers.push(...layers)
+    const g = new Float32Array(1 + this.layers.length)
+    g.set(this.gains.subarray(0, Math.min(this.gains.length, g.length)))
+    this.gains = g
+  }
+
+  /** Gain changes take effect from the next analysis frame; the overlap-add crossfades them. */
+  setGains(gains: ArrayLike<number>): void {
+    for (let i = 0; i < Math.min(gains.length, this.gains.length); i++) this.gains[i] = gains[i]
   }
 
   setParams(speed: number, pitch: number): void {
@@ -225,13 +244,27 @@ export class StretchEngine {
     const loopLen = loopEnd - loopStart
     const w0 = this.fifoWrite
 
+    // Sources contributing to this frame (just the main one in the common case).
+    const active: { chs: Float32Array[]; g: number }[] = []
+    if (this.gains[0] !== 0) active.push({ chs: this.source, g: this.gains[0] })
+    for (let l = 0; l < this.layers.length; l++) if (this.gains[l + 1] !== 0) active.push({ chs: this.layers[l], g: this.gains[l + 1] })
+    const direct = active.length === 1 && active[0].g === 1 && active[0].chs === this.source
+
     for (let c = 0; c < this.source.length; c++) {
       const src = this.source[c]
       for (let n = 0; n < N; n++) {
         let idx = start + n
         if (loopOn && idx >= loopEnd) idx = loopStart + ((idx - loopEnd) % loopLen)
-        re[n] = idx >= 0 && idx < len ? src[idx] * window[n] : 0
         im[n] = 0
+        if (idx < 0 || idx >= len) {
+          re[n] = 0
+        } else if (direct) {
+          re[n] = src[idx] * window[n]
+        } else {
+          let v = 0
+          for (const a of active) v += a.g * a.chs[c < a.chs.length ? c : a.chs.length - 1][idx]
+          re[n] = v * window[n]
+        }
       }
       this.fft.transform(re, im, false)
       for (let k = 0; k < bins; k++) {

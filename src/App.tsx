@@ -15,6 +15,9 @@ import { Btn } from './components/Controls'
 import { loadProject, projectKey, saveProject, uid, type Marker, type MarkerKind, type ProjectData, type SavedLoop } from './project'
 import { comboFromEvent, loadBindings, loadGlobalEnabled, saveBindings, saveGlobalEnabled, toAccelerator, type Bindings } from './shortcuts'
 import { useMidi } from './midi'
+import { useStems } from './stems/useStems'
+import { StemsTab } from './components/StemsTab'
+import { DEFAULT_STEM_MIX, STEM_NAMES, soloStem, stemGains, type StemMix } from './stems/types'
 import type { AudioFilePayload, Selection, View } from './types'
 
 interface LoadedFile {
@@ -46,7 +49,7 @@ const DEFAULT_PREFS: Prefs = {
   spelling: 'auto',
   a4: 440,
   timbre: 'piano',
-  sidebarTab: 'markers',
+  sidebarTab: 'stems',
   sidebarOpen: true,
   follow: true,
   volume: 0.8,
@@ -90,6 +93,7 @@ export default function App() {
   const [loops, setLoops] = useState<SavedLoop[]>([])
   const [eq, setEq] = useState<EqState>(FLAT_EQ)
   const [channelMode, setChannelMode] = useState<ChannelMode>('stereo')
+  const [stemMix, setStemMix] = useState<StemMix>(DEFAULT_STEM_MIX)
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null)
   const [editMarkerRequest, setEditMarkerRequest] = useState<{ id: string; n: number } | null>(null)
   const [activeLoop, setActiveLoop] = useState<string | null>(null)
@@ -162,10 +166,10 @@ export default function App() {
 
   useEffect(() => {
     if (!projectId) return
-    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents }
+    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix }
     const t = setTimeout(() => void saveProject(projectId, data), 400)
     return () => clearTimeout(t)
-  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents])
+  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix])
 
   // ---- view (zoom / scroll) ----
   const clampView = useCallback(
@@ -218,10 +222,11 @@ export default function App() {
         setSpeed(saved?.speed ?? 1)
         setSemitones(saved?.semitones ?? 0)
         setCents(saved?.cents ?? 0)
+        setStemMix(saved?.stemMix ?? DEFAULT_STEM_MIX)
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
         setStatus(restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null)
-        document.title = `${name} — Earwork`
+        document.title = `${name} — Earwork AI`
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err)
         setStatus({ kind: 'error', text: `Couldn't decode “${name}”. ${detail}` })
@@ -415,6 +420,25 @@ export default function App() {
   )
 
   // ---- spectrum weighting by the EQ ----
+  // ---- AI stems ----
+  const stemsCtl = useStems({ engine, buffer: file?.buffer ?? null, projectId })
+  const stems = stemsCtl.stems
+  const stemsActive = !!stems && stemMix.enabled
+  useEffect(() => {
+    if (!engine || !stems) return
+    const g = stemGains(stemMix)
+    engine.setGains(stemMix.enabled ? [0, ...STEM_NAMES.map((n) => g[n])] : [1, ...STEM_NAMES.map(() => 0)])
+  }, [engine, stems, stemMix])
+  const soloed = stemsActive ? soloStem(stemMix) : null
+  const displayPeaks = (soloed && stems?.find((s) => s.name === soloed)?.peaks) || file?.peaks || null
+  const analysisLayers = useMemo(() => {
+    if (!stems || !stemMix.enabled) return null
+    const g = stemGains(stemMix)
+    return stems
+      .filter((s) => g[s.name] > 0)
+      .map((s) => ({ id: s.name, channels: Array.from({ length: s.buffer.numberOfChannels }, (_, c) => s.buffer.getChannelData(c)), gain: g[s.name] }))
+  }, [stems, stemMix])
+
   const eqWeights = useMemo(() => {
     const active = eq.enabled && (eq.gains.some((g) => g !== 0) || eq.highpass.on || eq.lowpass.on)
     if (!engine || !active) return null
@@ -467,6 +491,7 @@ export default function App() {
         case 'zoomOut': return zoom(1.6)
         case 'zoomFit': return fit()
         case 'follow': return setFollow((f) => !f)
+        case 'toggleStems': return setStemMix((m) => ({ ...m, enabled: !m.enabled }))
       }
     },
     [loops, recallLoop, togglePlay, stop, jump, toStart, jumpMarker, toggleLoop, saveLoop, speed, changeSpeed, tap, addMarker, deleteMarker, selectedMarker, zoom, fit],
@@ -565,7 +590,7 @@ export default function App() {
           {file ? (
             <>
               <Overview
-                peaks={file.peaks}
+                peaks={displayPeaks ?? file.peaks}
                 view={view}
                 viewSpan={detailWidth * view.spp}
                 selection={selection}
@@ -576,7 +601,7 @@ export default function App() {
                 onView={setView}
               />
               <WaveformView
-                peaks={file.peaks}
+                peaks={displayPeaks ?? file.peaks}
                 view={view}
                 selection={selection}
                 loopOn={loopOn}
@@ -627,6 +652,7 @@ export default function App() {
             pitchRatio={pitchRatio}
             channelMode={channelMode}
             eqWeights={eqWeights}
+            layers={analysisLayers}
             transpose={transpose}
             spelling={spelling}
             a4={a4}
@@ -685,6 +711,17 @@ export default function App() {
             channelMode={channelMode}
             onChannelMode={setChannelMode}
             channels={file?.buffer.numberOfChannels ?? 2}
+            stemsActive={stemsActive}
+            stemsPanel={
+              <StemsTab
+                ctl={stemsCtl}
+                hasFile={!!file}
+                fileName={file?.name ?? null}
+                duration={file?.buffer.duration ?? 0}
+                mix={stemMix}
+                onMix={setStemMix}
+              />
+            }
           />
         )}
       </div>

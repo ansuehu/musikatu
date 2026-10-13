@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('e
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const crypto = require('node:crypto')
+const stems = require('./stems/service.cjs')
 
 const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'aac', 'ogg', 'oga', 'opus', 'm4a', 'mp4', 'webm', 'aif', 'aiff']
 
@@ -31,7 +32,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 640,
     backgroundColor: '#0d0f13',
-    title: 'Earwork',
+    title: 'Earwork AI',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -148,6 +149,7 @@ app.on('open-file', (e, file) => {
 })
 
 app.whenReady().then(() => {
+  stems.register(() => win)
   buildMenu()
   createWindow()
   app.on('activate', () => {

@@ -43,6 +43,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'zoomOut', label: 'Zoom out', group: 'View', key: '-' },
   { id: 'zoomFit', label: 'Zoom to fit', group: 'View', key: '0' },
   { id: 'follow', label: 'Follow playhead', group: 'View', key: 'F' },
+  { id: 'toggleStems', label: 'Stems / original recording', group: 'Transport', key: 'Shift+S' },
 ]
 
 export interface Binding {

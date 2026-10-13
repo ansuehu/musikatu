@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AudioEngine } from '../audio/AudioEngine'
 import { EQ_FREQS, EQ_MAX_DB, EQ_PRESETS, PASS_MAX_HZ, PASS_MIN_HZ, formatHz, type EqState } from '../audio/eq'
 import { CHANNEL_MODES, type ChannelMode } from '../dsp/ChannelMixer'
@@ -8,7 +8,7 @@ import { markerColors } from '../waveform/draw'
 import type { Selection } from '../types'
 import { Btn, Slider } from './Controls'
 
-export type SidebarTab = 'markers' | 'loops' | 'eq' | 'mix'
+export type SidebarTab = 'stems' | 'markers' | 'loops' | 'eq' | 'mix'
 
 interface Props {
   tab: SidebarTab
@@ -42,9 +42,12 @@ interface Props {
   channelMode: ChannelMode
   onChannelMode: (m: ChannelMode) => void
   channels: number
+  stemsPanel: ReactNode
+  stemsActive: boolean
 }
 
 const TABS: { id: SidebarTab; label: string }[] = [
+  { id: 'stems', label: 'Stems' },
   { id: 'markers', label: 'Markers' },
   { id: 'loops', label: 'Loops' },
   { id: 'eq', label: 'EQ' },
@@ -60,7 +63,7 @@ export function Sidebar(p: Props) {
             key={t.id}
             role="tab"
             aria-selected={p.tab === t.id}
-            className={`tab ${p.tab === t.id ? 'on' : ''} ${t.id === 'eq' && isEqActive(p.eq) ? 'dot' : ''} ${t.id === 'mix' && p.channelMode !== 'stereo' ? 'dot' : ''}`}
+            className={`tab ${p.tab === t.id ? 'on' : ''} ${t.id === 'eq' && isEqActive(p.eq) ? 'dot' : ''} ${t.id === 'mix' && p.channelMode !== 'stereo' ? 'dot' : ''} ${t.id === 'stems' && p.stemsActive ? 'dot' : ''}`}
             onClick={() => p.onTab(t.id)}
           >
             {t.label}
@@ -68,6 +71,7 @@ export function Sidebar(p: Props) {
         ))}
       </nav>
       <div className="tab-body">
+        {p.tab === 'stems' && p.stemsPanel}
         {p.tab === 'markers' && <MarkersTab {...p} />}
         {p.tab === 'loops' && <LoopsTab {...p} />}
         {p.tab === 'eq' && <EqTab {...p} />}

@@ -9,6 +9,8 @@ export type ToProcessor =
   | { type: 'params'; speed: number; pitch: number }
   | { type: 'loop'; enabled: boolean; start: number; end: number }
   | { type: 'channelMode'; mode: ChannelMode }
+  | { type: 'addLayers'; layers: Float32Array[][] }
+  | { type: 'gains'; gains: number[] }
 
 export type FromProcessor =
   | { type: 'pos'; pos: number; playing: boolean; seq: number }

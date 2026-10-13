@@ -15,6 +15,8 @@ interface Props {
   channelMode: ChannelMode
   /** EQ magnitude per analyser bin, or null when flat. */
   eqWeights: Float32Array | null
+  /** When stems are playing: the audible sources and their gains, so analysis follows what you hear. */
+  layers: { id: string; channels: Float32Array[]; gain: number }[] | null
   transpose: number
   spelling: Spelling
   a4: number
@@ -126,11 +128,30 @@ export function AnalysisPanel(props: Props) {
       const binHz = (sr / analyzer.size) * p.pitchRatio
       if (p.peaks && now - lastAnalysis >= ANALYSIS_INTERVAL_MS) {
         const pos = p.getPosition()
-        const key = `${p.peaks.id}|${Math.round(pos / 256)}|${p.channelMode}|${p.pitchRatio}|${p.a4}|${weightsId(p.eqWeights)}`
+        const key = `${p.peaks.id}|${Math.round(pos / 256)}|${p.channelMode}|${p.pitchRatio}|${p.a4}|${weightsId(p.eqWeights)}|${p.layers?.map((l) => `${l.id}:${l.gain.toFixed(3)}`).join(',') ?? 'mix'}`
         if (key !== analysisKey) {
           analysisKey = key
           lastAnalysis = now
-          mags = analyzer.analyze(p.peaks.channels, pos, p.channelMode, sr, p.eqWeights)
+          if (p.layers) {
+            // Mix just the analysis window from the audible stems.
+            const N = analyzer.size
+            const start = Math.round(pos) - N / 2
+            const L = new Float32Array(N)
+            const R = new Float32Array(N)
+            for (const { channels, gain } of p.layers) {
+              const cl = channels[0]
+              const cr = channels[1] ?? cl
+              const a = Math.max(0, -start)
+              const b = Math.min(N, cl.length - start)
+              for (let i = a; i < b; i++) {
+                L[i] += gain * cl[start + i]
+                R[i] += gain * cr[start + i]
+              }
+            }
+            mags = analyzer.analyze([L, R], N / 2, p.channelMode, sr, p.eqWeights)
+          } else {
+            mags = analyzer.analyze(p.peaks.channels, pos, p.channelMode, sr, p.eqWeights)
+          }
           est = estimateNotes(mags, binHz, p.a4)
           setEstimate(est)
         }

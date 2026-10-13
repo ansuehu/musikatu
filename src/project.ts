@@ -28,6 +28,8 @@ export interface ProjectData {
   speed: number
   semitones: number
   cents: number
+  /** Stem mixer settings, when the file has been separated. */
+  stemMix?: import('./stems/types').StemMix
 }
 
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Breakdown', 'Outro']

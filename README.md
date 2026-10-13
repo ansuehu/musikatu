@@ -1,4 +1,6 @@
-# Earwork
+# Earwork AI
+
+This is Earwork plus **on-device AI instrument separation**. The classic version without AI lives on the `main` branch (tag `v1-classic`). Both use different app IDs, so they install side by side.
 
 A precision playback workbench for transcribing music by ear: load a recording, zoom into the waveform, loop a phrase, and slow it down or retune it. You can also filter or cancel parts of the mix, see which notes are sounding, and check pitches against a reference piano.
 
@@ -45,6 +47,18 @@ npm run dist:dir         # unpacked app only, quick to check
 - Shows detected notes, a chord guess (including slash chords), and the strongest peak with its deviation in cents.
 - Analyses the decoded audio at the playhead, so it works while paused and at any speed. EQ, channel mode and pitch shift are taken into account.
 
+**AI instrument splitter (Stems tab)**
+- Splits a song into **vocals, drums, bass, guitar, piano/keys and other** using HTDemucs v4 (6 sources).
+- Runs entirely on your computer; nothing is uploaded. The model (136 MB, fp16 weights) is downloaded once from a pinned Hugging Face revision and verified by SHA-256. *Import file…* works offline.
+- **Run on Auto / GPU / CPU.** Auto times one chunk on each, once per machine, and keeps the faster.
+  - GPU backends: DirectML on Windows (any vendor); WebGPU on macOS (Metal) and Linux (Vulkan, AMD/Intel/NVIDIA); CUDA on Linux when its libraries are present.
+  - If a GPU can't start, separation falls back to CPU automatically.
+- Separation runs in a background utility process, so playback and the UI stay responsive. Shows progress, a time-left estimate, and Cancel.
+- A per-stem mixer (volume, **M**ute, **S**olo; Ctrl/⌘-click S for exclusive solo) feeds the time-stretcher, so you can solo the bass at 50% speed.
+  - *Stems / Original* (`Shift+S`) A/B-compares against the untouched recording.
+  - Soloing one stem shows its waveform, and the spectrum, note and chord detection follow what you hear.
+- Stems are cached per song (16-bit WAV) and reload instantly; the mixer settings are saved with the project. *Export WAVs…* writes the six stems anywhere.
+
 **Guitar chord diagrams**
 - The current chord guess is drawn as a guitar chord box: muted and open strings, finger numbers, barres, the position label (e.g. "6fr"), root notes highlighted, and note names under the strings.
 - Familiar open and barre shapes are shown first. Other voicings come from a fretboard search that covers all 16 chord qualities in every key, slash chords included. Use ‹ › to step through up to four voicings across the neck.
@@ -76,6 +90,19 @@ npm run dist:dir         # unpacked app only, quick to check
 | `L` loop on/off · `Shift+L` save loop · `1`–`9` recall · `Esc` clear | `H` half speed · `[`/`]` speed ±5% · `Shift+↑/↓` pitch ±1 st |
 | `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
 
+## Stem separation: performance
+
+Measured on a Ryzen with 16 threads and a Radeon RX 6700 XT (Linux):
+
+| | per 7.8 s chunk | 3:42 song |
+| --- | --- | --- |
+| CPU (8 threads) | 1.5–2.0 s | ≈ 80 s |
+| GPU (WebGPU / Vulkan) | 2.4 s | ≈ 95 s |
+
+GPU and CPU outputs agree to 87 dB SNR. Peak memory of the separator process is about 2.5 GB. On machines with fewer CPU cores the GPU usually wins, which is why Auto measures instead of assuming.
+
+The model is HTDemucs by Défossez et al. (Meta AI), MIT licence; the ONNX export is by adowu (MIT).
+
 ## Architecture
 
 ```
@@ -89,12 +116,14 @@ src/components/          views and panels
 src/shortcuts.ts         action registry, key-combo normalisation, accelerator mapping
 src/midi.ts              Web MIDI listener (note-on / CC pedal presses)
 src/project.ts           per-file project data and persistence
+src/stems/               stem types/mixer maths, useStems hook (model, separation, cache, engine layers)
+electron/stems/          model download/verification, separation service + IPC, ONNX Runtime utility process
 ```
 
 **Audio path:**
 
 ```
-decoded buffer ─► AudioWorklet [StretchEngine → ChannelMixer] ─► 10 × peaking EQ ─► high-pass ─► low-pass ─► master gain ─► out
+decoded mix + 6 stems ─► AudioWorklet [per-source gains → StretchEngine → ChannelMixer] ─► 10 × peaking EQ ─► high-pass ─► low-pass ─► master gain ─► out
                                                               reference tones ──────────────────────────────┘
 ```
 

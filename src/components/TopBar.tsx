@@ -29,7 +29,7 @@ interface Props {
 export function TopBar(p: Props) {
   return (
     <header className="topbar">
-      <div className="brand">Earwork</div>
+      <div className="brand">Earwork <span className="brand-ai">AI</span></div>
       <Btn onClick={p.onOpen} title="Open audio file (Ctrl+O)">
         <FolderIcon /> Open
       </Btn>

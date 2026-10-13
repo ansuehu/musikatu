@@ -1,8 +1,8 @@
 {
-  "name": "earwork",
-  "productName": "Earwork",
+  "name": "earwork-ai",
+  "productName": "Earwork AI",
   "version": "0.1.0",
-  "description": "Precision audio playback workbench for transcribing music by ear",
+  "description": "Precision playback workbench for transcribing music by ear, with on-device AI instrument separation",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -32,15 +32,18 @@
     "email": "andonisudupeehu@gmail.com"
   },
   "build": {
-    "appId": "eus.ehu.earwork",
-    "productName": "Earwork",
+    "appId": "eus.ehu.earwork.ai",
+    "productName": "Earwork AI",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**",
       "electron/**",
-      "package.json"
+      "package.json",
+      "!node_modules/onnxruntime-node/bin/**/*tensorrt*",
+      "!node_modules/onnxruntime-node/bin/**/*providers_cuda*",
+      "!node_modules/onnxruntime-node/bin/**/arm64/**"
     ],
     "fileAssociations": [
       {
@@ -64,11 +67,19 @@
       "target": [
         "dmg",
         "zip"
+      ],
+      "files": [
+        "!node_modules/onnxruntime-node/bin/**/win32/**",
+        "!node_modules/onnxruntime-node/bin/**/linux/**"
       ]
     },
     "win": {
       "target": [
         "nsis"
+      ],
+      "files": [
+        "!node_modules/onnxruntime-node/bin/**/linux/**",
+        "!node_modules/onnxruntime-node/bin/**/darwin/**"
       ]
     },
     "nsis": {
@@ -80,7 +91,17 @@
       "target": [
         "AppImage",
         "deb"
+      ],
+      "files": [
+        "!node_modules/onnxruntime-node/bin/**/win32/**",
+        "!node_modules/onnxruntime-node/bin/**/darwin/**"
       ]
-    }
+    },
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**"
+    ]
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.30.0"
   }
 }

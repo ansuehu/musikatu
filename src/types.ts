@@ -31,6 +31,7 @@ declare global {
       onGlobalShortcut(callback: (action: string) => void): () => void
       onMenu(callback: (command: 'open' | 'shortcuts') => void): () => void
       onFileOpened(callback: (file: AudioFilePayload) => void): () => void
+      stems: import('./stems/types').StemsApi
     }
   }
 }

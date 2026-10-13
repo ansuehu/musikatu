@@ -132,3 +132,24 @@ test('reaching the end without a loop sets ended', () => {
   render(e, 4096)
   assert.equal(e.ended, true)
 })
+
+test('layers: soloing one source reproduces it exactly; gains mix linearly', () => {
+  const a = richSignal()
+  const b = signal(3, (t) => 0.3 * Math.sin(2 * Math.PI * 330 * t))
+  const e = new StretchEngine()
+  e.setSource([a])
+  e.addLayers([[b], [a]])
+  e.setGains([0, 1, 0])
+  e.reset(8000)
+  const [solo] = render(e, 12800)
+  let maxErr = 0
+  for (let i = 256; i < solo.length; i++) maxErr = Math.max(maxErr, Math.abs(solo[i] - b[8000 + i]))
+  assert.ok(maxErr < 1e-4, `solo error ${maxErr}`)
+
+  e.setGains([0, 0.5, 0.5])
+  e.reset(8000)
+  const [mix] = render(e, 12800)
+  maxErr = 0
+  for (let i = 256; i < mix.length; i++) maxErr = Math.max(maxErr, Math.abs(mix[i] - 0.5 * (a[8000 + i] + b[8000 + i])))
+  assert.ok(maxErr < 1e-4, `mix error ${maxErr}`)
+})

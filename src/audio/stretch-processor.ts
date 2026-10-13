@@ -61,6 +61,12 @@ class StretchProcessor extends AudioWorkletProcessor {
       case 'channelMode':
         this.mixer.mode = msg.mode
         break
+      case 'addLayers':
+        this.engine.addLayers(msg.layers)
+        break
+      case 'gains':
+        this.engine.setGains(msg.gains)
+        break
     }
   }
 

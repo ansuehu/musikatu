@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { SpectrumAnalyzer } from '../src/analysis/spectrum.ts'
-import { chordName, estimateNotes, midiToFreq, noteName } from '../src/analysis/notes.ts'
+import { chordName, estimateNotes, guessChord, midiToFreq, noteName } from '../src/analysis/notes.ts'
 import { ChannelMixer } from '../src/dsp/ChannelMixer.ts'
 
 const SR = 48000
@@ -106,4 +106,10 @@ test('auto spelling follows lead-sheet conventions', () => {
   assert.equal(name(6, ''), 'F♯')
   assert.equal(name(0, '', 10), 'C/B♭')
   assert.equal(chordName({ root: 10, suffix: '', bass: null, score: 1 }, 0, 'sharps'), 'A♯')
+})
+
+test('two pitch classes only ever make a power chord', () => {
+  assert.equal(guessChord([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 11), null) // B + C
+  const p5 = guessChord([1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], 0) // C + G
+  assert.equal(p5 && chordName(p5), 'C5')
 })

@@ -24,4 +24,18 @@ contextBridge.exposeInMainWorld('api', {
   onGlobalShortcut: (callback) => subscribe('shortcuts:triggered', callback),
   onMenu: (callback) => subscribe('menu', callback),
   onFileOpened: (callback) => subscribe('file:opened', callback),
+  stems: {
+    info: () => ipcRenderer.invoke('stems:info'),
+    setPreference: (p) => ipcRenderer.invoke('stems:setPreference', p),
+    benchmark: () => ipcRenderer.invoke('stems:benchmark'),
+    downloadModel: () => ipcRenderer.invoke('stems:downloadModel'),
+    cancelDownload: () => ipcRenderer.invoke('stems:cancelDownload'),
+    importModel: () => ipcRenderer.invoke('stems:importModel'),
+    separate: (key, left, right) => ipcRenderer.invoke('stems:separate', { key, left, right }),
+    cancel: () => ipcRenderer.invoke('stems:cancel'),
+    load: (key) => ipcRenderer.invoke('stems:load', key),
+    exportStems: (key, baseName) => ipcRenderer.invoke('stems:export', { key, baseName }),
+    clearCache: () => ipcRenderer.invoke('stems:clearCache'),
+    onEvent: (callback) => subscribe('stems:event', callback),
+  },
 })

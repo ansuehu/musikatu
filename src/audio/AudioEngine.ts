@@ -130,6 +130,17 @@ export class AudioEngine {
     this.post({ type: 'loop', enabled, start, end })
   }
 
+  /** Adds sources (e.g. stems) of the loaded buffer's length, mixed before time-stretching. Starts silent. */
+  addLayers(buffers: AudioBuffer[]): void {
+    const layers = buffers.map((b) => Array.from({ length: b.numberOfChannels }, (_, c) => b.getChannelData(c).slice()))
+    this.post({ type: 'addLayers', layers }, layers.flat().map((c) => c.buffer as ArrayBuffer))
+  }
+
+  /** Gain per source: [main buffer, ...layers]. */
+  setGains(gains: number[]): void {
+    this.post({ type: 'gains', gains })
+  }
+
   setChannelMode(mode: ChannelMode): void {
     this.post({ type: 'channelMode', mode })
   }

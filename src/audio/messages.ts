@@ -15,6 +15,8 @@ export type ToProcessor =
   | { type: 'clicks'; positions: Float64Array; accents: Uint8Array }
   | { type: 'metronome'; enabled: boolean; settings: MetronomeSettings }
   | { type: 'metronomePreview'; accent: boolean }
+  | { type: 'notes'; starts: Float64Array; ends: Float64Array; midis: Uint8Array; velocities: Float32Array }
+  | { type: 'noteSynth'; enabled: boolean; volume: number; muteSource: boolean }
 
 export type FromProcessor =
   | { type: 'pos'; pos: number; playing: boolean; seq: number }

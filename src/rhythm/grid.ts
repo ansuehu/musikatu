@@ -48,6 +48,15 @@ export function buildGrid(beatSeconds: number[], downbeatSeconds: number[], samp
   return { beats, downbeats, firstBar: 1, meter: estimateMeter(downbeats), edited: false }
 }
 
+/** Median distance between beats, in samples (robust to sparse intros and gaps). */
+export function medianBeatSpacing(grid: BeatGrid): number {
+  const d: number[] = []
+  for (let i = 1; i < grid.beats.length; i++) d.push(grid.beats[i] - grid.beats[i - 1])
+  if (d.length === 0) return 0
+  d.sort((a, b) => a - b)
+  return d[d.length >> 1]
+}
+
 /** Median inter-beat interval as BPM (of the recording, at 100% speed). */
 export function tempoBpm(grid: BeatGrid, sampleRate: number): number | null {
   const d: number[] = []

@@ -4,7 +4,7 @@ import type { Peaks } from '../waveform/peaks'
 import type { Selection, View } from '../types'
 import { measureNumbers, type Marker } from '../project'
 import { segmentAt, type ChordSegment } from '../analysis/chordTimeline'
-import type { BeatGrid } from '../rhythm/grid'
+import { medianBeatSpacing, type BeatGrid } from '../rhythm/grid'
 
 const gridIds = new WeakMap<object, number>()
 let nextGridId = 1
@@ -401,7 +401,7 @@ function drawGrid(g: CanvasRenderingContext2D, grid: BeatGrid, laneH: number, he
   const end = start + W * spp
   const toX = (s: number) => Math.round((s - start) / spp)
   const px = Math.max(1, Math.round(dpr))
-  const beatPx = grid.beats.length > 1 ? (grid.beats[1] - grid.beats[0]) / spp : 0
+  const beatPx = medianBeatSpacing(grid) / spp
   // Beat lines only when they are far enough apart to read.
   if (beatPx > 6 * dpr) {
     g.fillStyle = colors.gridBeat
@@ -411,6 +411,7 @@ function drawGrid(g: CanvasRenderingContext2D, grid: BeatGrid, laneH: number, he
   const every = [1, 2, 4, 8, 16, 32, 64].find((n) => barPx * n >= 30 * dpr) ?? 128
   g.font = `${10 * dpr}px Inter, system-ui, sans-serif`
   g.textBaseline = 'middle'
+  let lastLabelEnd = -Infinity
   grid.downbeats.forEach((bi, k) => {
     const pos = grid.beats[bi]
     if (pos < start || pos > end) return
@@ -418,11 +419,14 @@ function drawGrid(g: CanvasRenderingContext2D, grid: BeatGrid, laneH: number, he
     const bar = grid.firstBar + k
     g.fillStyle = colors.gridBar
     g.fillRect(x, headerH, px, H - headerH)
-    if ((bar - 1) % every === 0 || every === 1) {
+    // never let a label run into the previous one (bars can be short where the tracker was unsure)
+    if (((bar - 1) % every === 0 || every === 1) && x > lastLabelEnd) {
+      const label = String(bar)
       g.fillStyle = colors.gridBarTick
       g.fillRect(x, 0, px, laneH)
       g.fillStyle = colors.gridText
-      g.fillText(String(bar), x + 3 * dpr, laneH / 2 + 0.5)
+      g.fillText(label, x + 3 * dpr, laneH / 2 + 0.5)
+      lastLabelEnd = x + g.measureText(label).width + 8 * dpr
     }
   })
 }

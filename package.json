@@ -108,7 +108,8 @@
     },
     "asarUnpack": [
       "node_modules/onnxruntime-node/**",
-      "electron/beats/models/**"
+      "electron/beats/models/**",
+      "electron/transcription/models/**"
     ]
   },
   "dependencies": {

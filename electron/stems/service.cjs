@@ -199,6 +199,12 @@ function register(getWindow) {
     return { beats: r.beats, downbeats: r.downbeats, seconds: r.seconds, sampleRate: 22050 }
   })
 
+  ipcMain.handle('notes:transcribe', async (_e, mono) => {
+    if (!(mono instanceof Float32Array)) throw new Error('Bad audio input')
+    const r = await runJob({ type: 'transcribe', mono }, (p) => send({ type: 'notesProgress', fraction: p.fraction }))
+    return { note: r.note, onset: r.onset, frames: r.frames, seconds: r.seconds }
+  })
+
   ipcMain.handle('stems:cancel', () => {
     // Killing the process is the only way to interrupt a running inference call.
     if (worker && currentSeparation) worker.kill()

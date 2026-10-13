@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('api', {
     track: (mono) => ipcRenderer.invoke('beats:track', mono),
     onProgress: (callback) => subscribe('stems:event', (e) => e.type === 'beatsProgress' && callback(e.fraction)),
   },
+  notes: {
+    transcribe: (mono) => ipcRenderer.invoke('notes:transcribe', mono),
+    onProgress: (callback) => subscribe('stems:event', (e) => e.type === 'notesProgress' && callback(e.fraction)),
+  },
   stems: {
     info: () => ipcRenderer.invoke('stems:info'),
     setPreference: (p) => ipcRenderer.invoke('stems:setPreference', p),

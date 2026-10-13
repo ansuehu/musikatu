@@ -5,6 +5,7 @@ const fsp = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
 const beatTracker = require('../beats/beat-tracker.cjs')
+const basicPitch = require('../transcription/basic-pitch.cjs')
 
 // Probing GPU backends that aren't installed is expected; keep those failures out of the log.
 ort.env.logLevel = 'fatal'
@@ -174,12 +175,23 @@ async function beats({ jobId, mono }) {
   post({ type: 'beats', jobId, ...result, seconds: (performance.now() - t0) / 1000 })
 }
 
+let pitchSession = null
+
+/** Note transcription activations (Basic Pitch, 230 KB model): CPU is plenty. */
+async function transcribe({ jobId, mono }) {
+  pitchSession ??= await basicPitch.createSession(ort, { executionProviders: ['cpu'], intraOpNumThreads: Math.max(1, Math.floor(os.cpus().length / 2)) })
+  const t0 = performance.now()
+  const r = await basicPitch.posteriors(ort, pitchSession, mono, (fraction) => post({ type: 'progress', jobId, fraction }))
+  post({ type: 'transcribed', jobId, ...r, seconds: (performance.now() - t0) / 1000 })
+}
+
 process.parentPort.on('message', async (e) => {
   const msg = e.data
   try {
     if (msg.type === 'separate') await separate(msg)
     else if (msg.type === 'benchmark') await benchmark(msg)
     else if (msg.type === 'beats') await beats(msg)
+    else if (msg.type === 'transcribe') await transcribe(msg)
   } catch (err) {
     post({ type: 'error', jobId: msg.jobId, message: String(err?.message ?? err) })
   }

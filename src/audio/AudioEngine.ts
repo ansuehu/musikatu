@@ -151,6 +151,22 @@ export class AudioEngine {
     this.post({ type: 'metronome', enabled, settings })
   }
 
+  /** Notes for the play-along synth (any order; positions in samples). */
+  setSynthNotes(notes: { start: number; end: number; midi: number; velocity: number }[]): void {
+    const sorted = [...notes].sort((a, b) => a.start - b.start)
+    this.post({
+      type: 'notes',
+      starts: Float64Array.from(sorted, (n) => n.start),
+      ends: Float64Array.from(sorted, (n) => n.end),
+      midis: Uint8Array.from(sorted, (n) => n.midi),
+      velocities: Float32Array.from(sorted, (n) => n.velocity),
+    })
+  }
+
+  setNoteSynth(enabled: boolean, volume: number, muteSource: boolean): void {
+    this.post({ type: 'noteSynth', enabled, volume, muteSource })
+  }
+
   /** Plays one metronome click now (accent = the beat-1 sound). */
   previewClick(accent: boolean): void {
     void this.ctx.resume()

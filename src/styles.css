@@ -1377,3 +1377,70 @@ input[type='range']:disabled {
 .hz-cell .small-text {
   min-width: 46px;
 }
+
+/* ---------- notes / piano roll ---------- */
+.piano-roll {
+  display: block;
+  flex: none;
+  width: 100%;
+  height: 190px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  touch-action: none;
+}
+.notes-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.source-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+.source-list li.selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.source-list .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+}
+.source-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+.source-name:disabled {
+  cursor: default;
+}
+.source-error {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
+.detection .metro-field .value {
+  width: 44px;
+}

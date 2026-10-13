@@ -29,6 +29,12 @@ import { DEFAULT_METRONOME } from './dsp/Metronome'
 import { useBeatGrid } from './rhythm/useBeatGrid'
 import { barRange, positionInfo, snapToBeat, type BeatGrid } from './rhythm/grid'
 import { snapSegmentsToBeats } from './rhythm/sheet'
+import { PianoRoll, type NoteKey } from './components/PianoRoll'
+import { NotesTab, type SynthPrefs } from './components/NotesTab'
+import { useTranscription } from './transcription/useTranscription'
+import { GM_PROGRAM, writeMidi } from './transcription/midi'
+import { SOURCE_LABEL, type NoteTrack } from './transcription/types'
+import { midiToFreq } from './analysis/notes'
 import type { AudioFilePayload, Selection, View } from './types'
 
 interface LoadedFile {
@@ -55,6 +61,8 @@ interface Prefs {
   capo: number
   metronome: MetronomePrefs
   snapToBeats: boolean
+  showPianoRoll: boolean
+  noteSynth: SynthPrefs
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -70,6 +78,8 @@ const DEFAULT_PREFS: Prefs = {
   capo: 0,
   metronome: { ...DEFAULT_METRONOME, on: false },
   snapToBeats: true,
+  showPianoRoll: true,
+  noteSynth: { volume: 0.7, muteSource: false },
 }
 
 function loadPrefs(): Prefs {
@@ -111,6 +121,8 @@ export default function App() {
   const [stemMix, setStemMix] = useState<StemMix>(DEFAULT_STEM_MIX)
   const [chordTrack, setChordTrack] = useState<ChordTrack | null>(null)
   const [beatGrid, setBeatGrid] = useState<BeatGrid | null>(null)
+  const [noteTracks, setNoteTracks] = useState<NoteTrack[]>([])
+  const [selectedNotes, setSelectedNotes] = useState<Set<NoteKey>>(new Set())
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null)
   const [editMarkerRequest, setEditMarkerRequest] = useState<{ id: string; n: number } | null>(null)
   const [activeLoop, setActiveLoop] = useState<string | null>(null)
@@ -127,6 +139,8 @@ export default function App() {
   // Older saved prefs only had { on, volume }; fill in the sound settings.
   const [metronome, setMetronome] = useState<MetronomePrefs>(() => ({ ...DEFAULT_METRONOME, ...initialPrefs.metronome }))
   const [snapToBeats, setSnapToBeats] = useState(initialPrefs.snapToBeats)
+  const [showPianoRoll, setShowPianoRoll] = useState(initialPrefs.showPianoRoll)
+  const [noteSynth, setNoteSynth] = useState<SynthPrefs>(initialPrefs.noteSynth)
   // shortcuts
   const [bindings, setBindingsRaw] = useState<Bindings>(loadBindings)
   const [globalEnabled, setGlobalEnabledRaw] = useState(loadGlobalEnabled)
@@ -176,20 +190,20 @@ export default function App() {
 
   // ---- persistence ----
   useEffect(() => {
-    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats }
+    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth }
     try {
       localStorage.setItem('earwork.prefs.v1', JSON.stringify(prefs))
     } catch {
       /* ignore */
     }
-  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats])
+  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth])
 
   useEffect(() => {
     if (!projectId) return
-    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined }
+    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined, noteTracks }
     const t = setTimeout(() => void saveProject(projectId, data), 400)
     return () => clearTimeout(t)
-  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid])
+  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid, noteTracks])
 
   // ---- view (zoom / scroll) ----
   const clampView = useCallback(
@@ -245,6 +259,8 @@ export default function App() {
         setStemMix(saved?.stemMix ?? DEFAULT_STEM_MIX)
         setChordTrack(saved?.chordTrack ?? null)
         setBeatGrid(saved?.beatGrid ?? null)
+        setNoteTracks(saved?.noteTracks ?? [])
+        setSelectedNotes(new Set())
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
         setStatus(restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null)
@@ -514,6 +530,51 @@ export default function App() {
     [beatGrid, engine, length, sampleRate],
   )
 
+  // ---- audio → notes ----
+  // Re-detected notes get new indices, so a selection by index no longer means anything.
+  const replaceNoteTracks = useCallback((fn: (t: NoteTrack[]) => NoteTrack[]) => {
+    setNoteTracks(fn)
+    setSelectedNotes(new Set())
+  }, [])
+  const transcription = useTranscription({ buffer: file?.buffer ?? null, stems, tracks: noteTracks, onTracks: replaceNoteTracks })
+  useEffect(() => engine?.setSynthNotes(noteTracks.filter((t) => t.play).flatMap((t) => t.notes)), [engine, noteTracks])
+  useEffect(() => {
+    const any = noteTracks.some((t) => t.play && t.notes.length)
+    engine?.setNoteSynth(any, noteSynth.volume, any && noteSynth.muteSource)
+  }, [engine, noteTracks, noteSynth])
+  /** Applies `fn` to every selected note (by track and index) and marks those tracks as edited. */
+  const editSelectedNotes = useCallback(
+    (fn: (n: NoteTrack['notes'][number]) => NoteTrack['notes'][number] | null) => {
+      if (selectedNotes.size === 0) return false
+      setNoteTracks((ts) =>
+        ts.map((t) => {
+          const mine = t.notes.some((_, i) => selectedNotes.has(`${t.source}:${i}`))
+          if (!mine) return t
+          const notes = t.notes.flatMap((n, i) => {
+            if (!selectedNotes.has(`${t.source}:${i}`)) return [n]
+            const r = fn(n)
+            return r ? [r] : []
+          })
+          return { ...t, notes, edited: true }
+        }),
+      )
+      return true
+    },
+    [selectedNotes],
+  )
+  const exportMidi = useCallback(() => {
+    const tracks = noteTracks
+      .filter((t) => t.visible && t.notes.length)
+      .map((t) => ({ name: SOURCE_LABEL(t.source), program: GM_PROGRAM[t.source] ?? 0, notes: t.notes }))
+    const bytes = writeMidi(tracks, beatGrid, sampleRate, file?.name ?? 'Earwork')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'audio/midi' }))
+    a.download = `${(file?.name ?? 'song').replace(/\.[^.]+$/, '')} - notes.mid`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  }, [noteTracks, beatGrid, sampleRate, file])
+  const showRoll = showPianoRoll && noteTracks.some((t) => t.visible && t.notes.length)
+
   // ---- whole-song chord chart ----
   // Chord changes land on beats once both the chart and the grid exist (unless the user has edited the chart).
   const setChordTrackSnapped = useCallback(
@@ -603,6 +664,7 @@ export default function App() {
         case 'loop': return toggleLoop()
         case 'saveLoop': return saveLoop()
         case 'clearSelection':
+          setSelectedNotes(new Set())
           setSelection(null)
           setActiveLoop(null)
           return
@@ -620,7 +682,11 @@ export default function App() {
         case 'addSection': return addMarker('section')
         case 'addMeasure': return addMarker('measure')
         case 'addBeat': return addMarker('beat')
-        case 'deleteMarker': return deleteMarker(selectedMarker)
+        case 'deleteMarker':
+          if (editSelectedNotes(() => null)) return setSelectedNotes(new Set())
+          return deleteMarker(selectedMarker)
+        case 'noteUp': return void editSelectedNotes((n) => ({ ...n, midi: Math.min(108, n.midi + 1) }))
+        case 'noteDown': return void editSelectedNotes((n) => ({ ...n, midi: Math.max(21, n.midi - 1) }))
         case 'zoomIn': return zoom(1 / 1.6)
         case 'zoomOut': return zoom(1.6)
         case 'zoomFit': return fit()
@@ -802,6 +868,25 @@ export default function App() {
               </div>
             </div>
           )}
+          {file && showRoll && (
+            <PianoRoll
+              tracks={noteTracks}
+              view={view}
+              grid={beatGrid}
+              getPosition={getPosition}
+              selected={selectedNotes}
+              transpose={transpose}
+              spelling={spelling}
+              onView={setView}
+              onSeek={seek}
+              onSelect={setSelectedNotes}
+              onPlayNote={(midi) => {
+                if (!engine) return
+                const release = engine.playTone(midiToFreq(midi, a4) * pitchRatio, 'piano')
+                setTimeout(release, 600)
+              }}
+            />
+          )}
           <AnalysisPanel
             engine={engine}
             peaks={file?.peaks ?? null}
@@ -890,6 +975,23 @@ export default function App() {
                 snap={snapToBeats}
                 onSnap={setSnapToBeats}
                 onLoopBars={loopBars}
+              />
+            }
+            notesPanel={
+              <NotesTab
+                ctl={transcription}
+                tracks={noteTracks}
+                onTracks={replaceNoteTracks}
+                hasFile={!!file}
+                hasStems={!!stems}
+                hasGrid={!!beatGrid}
+                synth={noteSynth}
+                onSynth={setNoteSynth}
+                showRoll={showPianoRoll}
+                onShowRoll={setShowPianoRoll}
+                selectedCount={selectedNotes.size}
+                onExport={exportMidi}
+                spelling={spelling}
               />
             }
             chordsPanel={

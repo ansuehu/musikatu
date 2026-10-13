@@ -2,6 +2,7 @@ import { StretchEngine } from '../dsp/StretchEngine.ts'
 import { ChannelMixer } from '../dsp/ChannelMixer.ts'
 import type { ToProcessor } from './messages.ts'
 import { Metronome } from '../dsp/Metronome.ts'
+import { NoteSynth } from '../dsp/NoteSynth.ts'
 
 const FADE_OUT = 256
 const REPORT_EVERY = 2 // render quanta (~6 ms at 44.1 kHz)
@@ -10,6 +11,9 @@ class StretchProcessor extends AudioWorkletProcessor {
   private engine = new StretchEngine()
   private mixer = new ChannelMixer(sampleRate)
   private metronome = new Metronome(sampleRate)
+  private synth = new NoteSynth(sampleRate)
+  private pitch = 1
+  private muteSource = false
   private state: 'stopped' | 'playing' | 'stopping' = 'stopped'
   /** Playhead while stopped, in source samples. */
   private pos = 0
@@ -56,6 +60,7 @@ class StretchProcessor extends AudioWorkletProcessor {
         break
       case 'params':
         this.engine.setParams(msg.speed, msg.pitch)
+        this.pitch = msg.pitch
         break
       case 'loop':
         this.engine.setLoop(msg.enabled, msg.start, msg.end)
@@ -79,6 +84,14 @@ class StretchProcessor extends AudioWorkletProcessor {
       case 'metronomePreview':
         this.metronome.preview(msg.accent)
         break
+      case 'notes':
+        this.synth.setNotes(msg.starts, msg.ends, msg.midis, msg.velocities)
+        break
+      case 'noteSynth':
+        this.synth.enabled = msg.enabled
+        this.synth.volume = msg.volume
+        this.muteSource = msg.muteSource
+        break
     }
   }
 
@@ -87,6 +100,7 @@ class StretchProcessor extends AudioWorkletProcessor {
     if (this.state === 'stopped' || this.engine.channelCount === 0) {
       // auditioning a click works while stopped (outputs arrive zeroed)
       if (this.metronome.busy) this.metronome.render(out, out[0].length, null, null, null)
+      if (this.synth.busy) this.synth.render(out, out[0].length, null, null, null, this.pitch)
       return true
     }
 
@@ -94,6 +108,8 @@ class StretchProcessor extends AudioWorkletProcessor {
     const from = this.engine.position
     this.engine.render(out, frames)
     this.mixer.process(out, frames)
+    if (this.muteSource) for (const ch of out) ch.fill(0, 0, frames)
+    this.synth.render(out, frames, this.state === 'playing' ? from : null, this.state === 'playing' ? this.engine.position : null, this.engine.loopRegion, this.pitch)
     // Clicks go in after the channel mixer so vocal-cut and friends never cancel them.
     if (this.state === 'playing') this.metronome.render(out, frames, from, this.engine.position, this.engine.loopRegion)
 

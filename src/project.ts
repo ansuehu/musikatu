@@ -34,6 +34,8 @@ export interface ProjectData {
   chordTrack?: import('./analysis/useChordTrack').ChordTrack
   /** Beats and bars (possibly hand-corrected). */
   beatGrid?: import('./rhythm/grid').BeatGrid
+  /** Transcribed notes per source. */
+  noteTracks?: import('./transcription/types').NoteTrack[]
 }
 
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Breakdown', 'Outro']

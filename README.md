@@ -88,6 +88,21 @@ npm run dist:dir         # unpacked app only, quick to check
 - **Fixing the grid:** move the downbeat ±1 beat, ½× / 2× tempo, change the meter, "Bar 1 here". Corrections are saved with the song.
 - **Chord chart:** chord changes snap onto beats, chord rows show bar.beat, and the exported sheet has a bar-by-bar section (`| C | Am | F G |`, with `%` for repeated bars).
 
+**Audio → notes / MIDI (Notes tab and piano roll)**
+- Transcribes any separated stem (vocals, bass, guitar, piano/keys, other) or the full mix into notes.
+  - Uses Spotify's **Basic Pitch**, a 230 KB model bundled with the app, on CPU: about 1.6 s for a 3:42 song.
+  - Matches the reference package exactly on test audio.
+- **Piano roll** under the waveform, sharing its zoom and scroll:
+  - notes in each stem's colour, with bar and beat lines
+  - notes glow while they sound; click one to hear it
+  - Shift-click selects several; `↑`/`↓` move the selection a semitone, `Del` removes it
+- **♪ play-along:** a synth plays the notes in sync with the recording at any speed, loop and pitch shift. *Hear the notes only* mutes the recording to check the transcription by ear.
+- **Detection settings per source:** new-note sensitivity, sustain, shortest note and pitch range (each instrument starts with a sensible range). They re-apply instantly, without re-running the model.
+- **Export MIDI:** one track per source with a matching GM instrument.
+  - With a beat grid, the file carries the song's own tempo map (one beat = one quarter) and a time-signature change for any irregular bar.
+  - Every detected bar starts a MIDI bar, and notes stay within about 3 ms of the audio.
+  - Opens directly in MuseScore, Guitar Pro or a DAW.
+
 **Guitar chord diagrams**
 - The current chord guess is drawn as a guitar chord box: muted and open strings, finger numbers, barres, the position label (e.g. "6fr"), root notes highlighted, and note names under the strings.
 - Familiar open and barre shapes are shown first. Other voicings come from a fretboard search that covers all 16 chord qualities in every key, slash chords included. Use ‹ › to step through up to four voicings across the neck.
@@ -117,7 +132,7 @@ npm run dist:dir         # unpacked app only, quick to check
 | --- | --- |
 | `Space` play/pause · `S` stop · `Home` to start | `←`/`→` ±1 s · `Shift+←/→` ±5 s · `,`/`.` previous/next marker |
 | `L` loop on/off · `Shift+L` save loop · `1`–`9` recall · `Esc` clear | `H` half speed · `[`/`]` speed ±5% · `Shift+↑/↓` pitch ±1 st |
-| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord · `PageUp`/`PageDown` bars · `Shift+B` select bar · `K` metronome | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
+| `N` section · `M` measure · `B` beat · `Del` delete marker · `T` tap · `<`/`>` chords · `C` select chord · `PageUp`/`PageDown` bars · `Shift+B` select bar · `K` metronome · `↑`/`↓`/`Del` edit selected notes | `=`/`-`/`0` zoom in/out/fit · `F` follow · wheel zoom · `Shift`+wheel scroll |
 
 ## Stem separation: performance
 
@@ -132,7 +147,7 @@ GPU and CPU outputs agree to 87 dB SNR. Peak memory of the separator process is 
 
 The model is HTDemucs by Défossez et al. (Meta AI), MIT licence; the ONNX export is by adowu (MIT).
 
-The beat model is Beat This! small (Foscarin, Schlüter, Widmer, JKU Linz; MIT). It was exported here from the official checkpoint; see `scripts/beat-model/` and `electron/beats/models/NOTICE.md`.
+The note model is Spotify's Basic Pitch (Apache-2.0); see `electron/transcription/models/NOTICE.md`. The beat model is Beat This! small (Foscarin, Schlüter, Widmer, JKU Linz; MIT). It was exported here from the official checkpoint; see `scripts/beat-model/` and `electron/beats/models/NOTICE.md`.
 
 ## Architecture
 

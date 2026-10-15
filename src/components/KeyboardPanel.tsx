@@ -10,6 +10,18 @@ interface Props {
   spelling: Spelling
   a4: number
   timbre: Timbre
+  /** What the analysis listens to, shown on the panel; clicking it opens the setting. */
+  source: string
+  onSource: () => void
+}
+
+/** "♪ Bass (solo)": what the live analysis is listening to. */
+function SourceLabel({ source, onSource, className = '' }: { source: string; onSource: () => void; className?: string }) {
+  return (
+    <button type="button" className={`source-label ${className}`} onMouseDown={(e) => e.preventDefault()} onClick={onSource} title={`Listening to: ${source}. Click to choose (Stems panel)`}>
+      ♪ {source}
+    </button>
+  )
 }
 
 const KEYS_H = 62
@@ -179,6 +191,7 @@ export function KeyboardPanel(props: Props) {
 
   return (
     <div className="keyboard-panel">
+      <SourceLabel source={props.source} onSource={props.onSource} className="overlay" />
       <canvas
         ref={canvasRef}
         className="analysis-canvas"
@@ -207,10 +220,12 @@ interface GuessProps {
   onA4: (hz: number) => void
   timbre: Timbre
   onTimbre: (t: Timbre) => void
+  source: string
+  onSource: () => void
 }
 
 /** The chord and notes sounding at the playhead, the strongest pitch with its tuning, and the reference-tone settings. */
-export function ChordGuessPanel({ transpose, spelling, a4, onA4, timbre, onTimbre }: GuessProps) {
+export function ChordGuessPanel({ transpose, spelling, a4, onA4, timbre, onTimbre, source, onSource }: GuessProps) {
   const estimate = useLiveEstimate()
   const hover = useHoverKey()
   const peak = estimate?.peak
@@ -234,6 +249,7 @@ export function ChordGuessPanel({ transpose, spelling, a4, onA4, timbre, onTimbr
         )}
       </div>
       <div className="hover">{hoverText || 'Click keys for reference tones'}</div>
+      <SourceLabel source={source} onSource={onSource} />
       <div className="ref-row">
         <label title="Tuning reference for reference tones, key positions and note detection">
           A4

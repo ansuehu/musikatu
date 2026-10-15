@@ -30,7 +30,15 @@ export interface StemMix {
   /** Play the stems (true) or the original recording (false). */
   enabled: boolean
   stems: Record<StemName, StemChannel>
+  /**
+   * Stems the live analysis (spectrum, chord guess, guitar) listens to, whatever is playing.
+   * Missing or null: it follows what you hear.
+   */
+  analyse?: StemName[] | null
 }
+
+/** Stems that carry the harmony: the default choice when the analysis listens to chosen stems. */
+export const HARMONIC_STEMS: StemName[] = ['guitar', 'bass', 'piano', 'other']
 
 export const DEFAULT_STEM_MIX: StemMix = {
   enabled: true,
@@ -47,6 +55,30 @@ export function stemGains(mix: StemMix): Record<StemName, number> {
       return [n, audible ? s.volume : 0]
     }),
   ) as Record<StemName, number>
+}
+
+/**
+ * What the live analysis listens to: stem gains, or null for the original recording. With chosen stems
+ * (`mix.analyse`) each counts at full level; otherwise it follows playback, solo, mute and volume.
+ */
+export function analysisGains(mix: StemMix, haveStems: boolean): Partial<Record<StemName, number>> | null {
+  if (!haveStems) return null
+  if (mix.analyse?.length) return Object.fromEntries(mix.analyse.map((n) => [n, 1]))
+  if (!mix.enabled) return null
+  const g = stemGains(mix)
+  return Object.fromEntries(STEM_NAMES.filter((n) => g[n] > 0).map((n) => [n, g[n]]))
+}
+
+/** Short description of what the live analysis listens to, for the panels. */
+export function analysisLabel(mix: StemMix, haveStems: boolean): string {
+  const g = analysisGains(mix, haveStems)
+  if (!g) return 'Original recording'
+  const names = STEM_NAMES.filter((n) => (g[n] ?? 0) > 0)
+  if (names.length === 0) return 'Nothing (all stems muted)'
+  const list = names.map((n) => STEM_LABELS[n]).join(' + ')
+  if (mix.analyse?.length) return `Chosen stems: ${list}`
+  if (names.length === STEM_NAMES.length) return 'All stems, as heard'
+  return names.length === 1 && STEM_NAMES.some((n) => mix.stems[n].solo) ? `${list} (solo)` : `${list}, as heard`
 }
 
 /** The single stem being heard on its own, if exactly one is audible. */

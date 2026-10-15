@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { rangeOf, type Peaks } from '../waveform/peaks'
-import { DEFAULT_STEM_MIX, STEM_COLORS, STEM_LABELS, STEM_NAMES, type Device, type StemMix, type StemName } from '../stems/types'
+import { DEFAULT_STEM_MIX, HARMONIC_STEMS, STEM_COLORS, STEM_LABELS, STEM_NAMES, type Device, type StemMix, type StemName } from '../stems/types'
 import type { StemsController } from '../stems/useStems'
 import { Btn, Slider } from './Controls'
 import type { CacheEntry } from '../stems/types'
@@ -209,8 +209,39 @@ export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix, project
               )
             })}
           </ul>
+          <div className="analysis-source">
+            <span className="label">Spectrum &amp; chord guess listen to</span>
+            <div className="segmented wide">
+              <Btn className={`small ${mix.analyse?.length ? '' : 'on'}`} onClick={() => onMix({ ...mix, analyse: null })} title="Follow playback: Stems or Original, with mute, solo and volume">
+                What you hear
+              </Btn>
+              <Btn className={`small ${mix.analyse?.length ? 'on' : ''}`} onClick={() => !mix.analyse?.length && onMix({ ...mix, analyse: HARMONIC_STEMS })} title="Only the stems picked below, whatever is playing">
+                Chosen stems
+              </Btn>
+            </div>
+            {!!mix.analyse?.length && (
+              <div className="stem-chips">
+                {STEM_NAMES.map((name) => {
+                  const on = mix.analyse!.includes(name)
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`stem-chip ${on ? 'on' : ''}`}
+                      style={{ '--chip': STEM_COLORS[name] } as CSSProperties}
+                      aria-pressed={on}
+                      // at least one stem stays chosen
+                      onClick={() => (on && mix.analyse!.length === 1 ? undefined : onMix({ ...mix, analyse: on ? mix.analyse!.filter((n) => n !== name) : STEM_NAMES.filter((n) => n === name || mix.analyse!.includes(n)) }))}
+                    >
+                      {STEM_LABELS[name]}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
           <div className="button-row">
-            <Btn className="small" onClick={() => onMix({ ...DEFAULT_STEM_MIX, enabled: mix.enabled })}>
+            <Btn className="small" onClick={() => onMix({ ...DEFAULT_STEM_MIX, enabled: mix.enabled, analyse: mix.analyse })}>
               Reset mixer
             </Btn>
             <Btn

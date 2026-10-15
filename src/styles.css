@@ -2051,3 +2051,55 @@ body.resizing-ne * {
 .guitar-panel .guitar-name {
   font-size: clamp(13px, min(7cqw, 6cqh), 22px);
 }
+
+/* ---------- what the live analysis listens to ---------- */
+.source-label {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  color: var(--muted);
+  font: 500 11px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.source-label:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.source-label.overlay {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 2;
+  max-width: calc(100% - 16px);
+}
+.analysis-source {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+.stem-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.stem-chip {
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 11.5px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+.stem-chip.on {
+  border-color: var(--chip);
+  background: color-mix(in srgb, var(--chip) 18%, transparent);
+  color: var(--text);
+}

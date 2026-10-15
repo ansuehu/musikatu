@@ -22,7 +22,7 @@ import { comboFromEvent, loadBindings, loadGlobalEnabled, saveBindings, saveGlob
 import { useMidi } from './midi'
 import { useStems } from './stems/useStems'
 import { StemsTab } from './components/StemsTab'
-import { DEFAULT_STEM_MIX, STEM_NAMES, soloStem, stemGains, type StemMix } from './stems/types'
+import { analysisGains, analysisLabel, DEFAULT_STEM_MIX, STEM_NAMES, soloStem, stemGains, type StemMix } from './stems/types'
 import { ChordsTab } from './components/ChordsTab'
 import { useChordTrack, type ChordTrack } from './analysis/useChordTrack'
 import { mergeShort, segmentAt, type Chord } from './analysis/chordTimeline'
@@ -517,13 +517,15 @@ export default function App() {
   }, [engine, stems, stemMix])
   const soloed = stemsActive ? soloStem(stemMix) : null
   const displayPeaks = (soloed && stems?.find((s) => s.name === soloed)?.peaks) || file?.peaks || null
+  // the live analysis listens to what you hear, or to the stems chosen for it in the Stems panel
   const analysisLayers = useMemo(() => {
-    if (!stems || !stemMix.enabled) return null
-    const g = stemGains(stemMix)
+    const g = analysisGains(stemMix, !!stems)
+    if (!stems || !g) return null
     return stems
-      .filter((s) => g[s.name] > 0)
-      .map((s) => ({ id: s.name, channels: Array.from({ length: s.buffer.numberOfChannels }, (_, c) => s.buffer.getChannelData(c)), gain: g[s.name] }))
+      .filter((s) => (g[s.name] ?? 0) > 0)
+      .map((s) => ({ id: s.name, channels: Array.from({ length: s.buffer.numberOfChannels }, (_, c) => s.buffer.getChannelData(c)), gain: g[s.name]! }))
   }, [stems, stemMix])
+  const listeningTo = analysisLabel(stemMix, !!stems)
 
   // ---- beats and bars ----
   gridRef.current = beatGrid
@@ -1038,9 +1040,9 @@ if (m) engine?.seek(m.pos)
           />
         )
       case 'keyboard':
-        return <KeyboardPanel engine={engine} transpose={transpose} spelling={spelling} a4={a4} timbre={timbre} />
+        return <KeyboardPanel engine={engine} transpose={transpose} spelling={spelling} a4={a4} timbre={timbre} source={listeningTo} onSource={() => focusPanel('stems')} />
       case 'chordGuess':
-        return <ChordGuessPanel transpose={transpose} spelling={spelling} a4={a4} onA4={setA4} timbre={timbre} onTimbre={setTimbre} />
+        return <ChordGuessPanel transpose={transpose} spelling={spelling} a4={a4} onA4={setA4} timbre={timbre} onTimbre={setTimbre} source={listeningTo} onSource={() => focusPanel('stems')} />
       case 'guitar':
         return <LiveGuitarPanel engine={engine} spelling={spelling} transpose={transpose} capo={capo} onCapo={setCapo} a4={a4} />
     }

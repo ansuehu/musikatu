@@ -204,37 +204,53 @@ export function PlaceMenu({ id, place, onMove }: { id: PanelId; place: Place; on
 
 // ======================= resizing =======================
 
+/** One resizable dimension: how to read it, its limits (read when a drag starts) and how to set it. */
+interface Axis {
+  size: () => number
+  limits: () => [number, number]
+  /** Live update while dragging: change the DOM directly, no React render per pointer move. */
+  apply: (v: number) => void
+  /** The final size, or null to reset it (double-click). */
+  commit: (v: number | null) => void
+}
+
+type HandleSide = 'left' | 'right' | 'top' | 'top-left' | 'top-right'
+
 /**
- * A thin edge you drag to resize the element it sits on. While dragging, `apply` updates the DOM directly
- * (no React render per pointer move) and the final size goes to `commit`; a double-click resets (null).
- * `limits` is read when the drag starts, so it can depend on the space available at that moment.
+ * A thin edge, or a corner, you drag to resize the element it sits on. Edges change one dimension; corners
+ * change both (`x` and `y`). Pointer travel towards the outside of the element makes it bigger.
  */
-function ResizeEdge({ side, size, limits, apply, commit, title }: { side: 'left' | 'right' | 'top'; size: () => number; limits: () => [number, number]; apply: (v: number) => void; commit: (v: number | null) => void; title: string }) {
+function ResizeHandle({ side, x, y, title }: { side: HandleSide; x?: Axis; y?: Axis; title: string }) {
+  const xSign = side.endsWith('left') ? -1 : 1
   return (
     <div
       className={`resize-edge ${side}`}
       title={`${title} (double-click to reset)`}
-      onDoubleClick={() => commit(null)}
+      onDoubleClick={() => {
+        x?.commit(null)
+        y?.commit(null)
+      }}
       onPointerDown={(e) => {
         if (e.button !== 0) return
         e.preventDefault()
         e.stopPropagation()
-        const start = size()
-        const [min, max] = limits()
-        const x0 = e.clientX
-        const y0 = e.clientY
-        let v = start
-        document.body.classList.add(side === 'top' ? 'resizing-y' : 'resizing-x')
-        const move = (ev: PointerEvent) => {
-          const d = side === 'left' ? x0 - ev.clientX : side === 'right' ? ev.clientX - x0 : y0 - ev.clientY
-          v = Math.round(Math.max(min, Math.min(max, start + d)))
-          apply(v)
-        }
+        const axes = [
+          x && { axis: x, start: x.size(), lim: x.limits(), delta: (ev: PointerEvent) => xSign * (ev.clientX - e.clientX) },
+          y && { axis: y, start: y.size(), lim: y.limits(), delta: (ev: PointerEvent) => e.clientY - ev.clientY },
+        ].filter((a) => !!a)
+        const values = axes.map((a) => a.start)
+        const cls = x && y ? (side === 'top-left' ? 'resizing-nw' : 'resizing-ne') : x ? 'resizing-x' : 'resizing-y'
+        document.body.classList.add(cls)
+        const move = (ev: PointerEvent) =>
+          axes.forEach((a, i) => {
+            values[i] = Math.round(Math.max(a.lim[0], Math.min(a.lim[1], a.start + a.delta(ev))))
+            a.axis.apply(values[i])
+          })
         const up = () => {
           window.removeEventListener('pointermove', move, true)
           window.removeEventListener('pointerup', up, true)
-          document.body.classList.remove('resizing-x', 'resizing-y')
-          if (v !== start) commit(v)
+          document.body.classList.remove(cls)
+          axes.forEach((a, i) => values[i] !== a.start && a.axis.commit(values[i]))
         }
         window.addEventListener('pointermove', move, true)
         window.addEventListener('pointerup', up, true)
@@ -272,13 +288,15 @@ export function SidebarHost({ ids, tab, onTab, dots, render, onMove, onResize }:
   const { min, max } = SIZE_LIMITS.sidebarW
   return (
     <aside className="sidebar" data-drop="sidebar" ref={ref}>
-      <ResizeEdge
+      <ResizeHandle
         side="left"
         title="Drag to resize the sidebar"
-        size={() => ref.current!.getBoundingClientRect().width}
-        limits={() => [min, Math.max(min, Math.min(max, window.innerWidth - 480))]}
-        apply={(v) => ref.current!.parentElement!.style.setProperty('--sidebar-w', `${v}px`)}
-        commit={onResize}
+        x={{
+          size: () => ref.current!.getBoundingClientRect().width,
+          limits: () => [min, Math.max(min, Math.min(max, window.innerWidth - 480))],
+          apply: (v) => ref.current!.parentElement!.style.setProperty('--sidebar-w', `${v}px`),
+          commit: onResize,
+        }}
       />
       <nav className={`tabs ${endMarker ? 'insert-end' : ''}`} role="tablist">
         {ids.map((id, i) => (
@@ -293,31 +311,43 @@ export function SidebarHost({ ids, tab, onTab, dots, render, onMove, onResize }:
 
 // ======================= bottom strip =======================
 
-function DockCell({ id, next, width, edge, render, onMove, onResize }: { id: PanelId; next: PanelId | undefined; width: number | 'flex'; edge: 'left' | 'right' | null; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void; onResize: (id: PanelId, w: number | null) => void }) {
+function DockCell({ id, next, width, edge, heightAxis, render, onMove, onResize }: {
+  id: PanelId
+  next: PanelId | undefined
+  width: number | 'flex'
+  edge: 'left' | 'right' | null
+  heightAxis: Axis
+  render: (id: PanelId) => ReactNode
+  onMove: (id: PanelId, p: Place) => void
+  onResize: (id: PanelId, w: number | null) => void
+}) {
   const marker = useInsertMarker('bottom', id)
   const ref = useRef<HTMLDivElement>(null)
+  const widthAxis: Axis | null = edge && {
+    size: () => ref.current!.getBoundingClientRect().width,
+    limits: () => {
+      // grow only into the space the flexible panel can give up (or the strip's free space)
+      const cell = ref.current!
+      const strip = cell.parentElement!
+      const cells = [...strip.querySelectorAll<HTMLElement>(':scope > .dock-cell')]
+      const flex = cells.find((c) => c.classList.contains('flex'))
+      const used = cells.reduce((sum, c) => sum + c.getBoundingClientRect().width, 0) + 8 * (cells.length - 1)
+      const slack = flex ? flex.getBoundingClientRect().width - 260 : strip.getBoundingClientRect().width - used
+      const w = cell.getBoundingClientRect().width
+      return [SIZE_LIMITS.cellW.min, Math.max(w, Math.min(SIZE_LIMITS.cellW.max, w + slack))]
+    },
+    apply: (v) => (ref.current!.style.width = `${v}px`),
+    commit: (v) => onResize(id, v),
+  }
   // the analysis panels bring their own card styling; everything else gets a scrolling card
   const bare = id === 'keyboard' || id === 'chordGuess' || id === 'guitar'
   return (
     <div ref={ref} className={`dock-cell ${width === 'flex' ? 'flex' : ''} ${marker ? 'insert-before' : ''}`} style={width === 'flex' ? undefined : { width }} {...dropItem('bottom', id, next)}>
-      {edge && (
-        <ResizeEdge
-          side={edge}
-          title={`Drag to resize ${metaOf(id).title}`}
-          size={() => ref.current!.getBoundingClientRect().width}
-          limits={() => {
-            // grow only into the space the flexible panel can give up (or the strip's free space)
-            const cell = ref.current!
-            const strip = cell.parentElement!
-            const flex = strip.querySelector<HTMLElement>('.dock-cell.flex')
-            const used = [...strip.children].reduce((sum, c) => sum + c.getBoundingClientRect().width, 0) + 8 * (strip.children.length - 1)
-            const slack = flex ? flex.getBoundingClientRect().width - 260 : strip.getBoundingClientRect().width - used
-            const w = cell.getBoundingClientRect().width
-            return [SIZE_LIMITS.cellW.min, Math.max(w, Math.min(SIZE_LIMITS.cellW.max, w + slack))]
-          }}
-          apply={(v) => (ref.current!.style.width = `${v}px`)}
-          commit={(v) => onResize(id, v)}
-        />
+      {edge && widthAxis && (
+        <>
+          <ResizeHandle side={edge} title={`Drag to resize ${metaOf(id).title}`} x={widthAxis} />
+          <ResizeHandle side={`top-${edge}`} title={`Drag to resize ${metaOf(id).title} and the bottom strip`} x={widthAxis} y={heightAxis} />
+        </>
       )}
       <div className={bare ? 'dock-bare' : 'dock-card'}>{render(id)}</div>
       <div className="dock-grip" {...dragHandle(id)} title="Drag to move this panel">
@@ -342,16 +372,15 @@ export function BottomDock({ ids, widthOf, height, render, onMove, onResizeCell,
   if (ids.length === 0) return null
   const flexAt = ids.findIndex((id) => widthOf(id) === 'flex')
   const { min, max } = SIZE_LIMITS.bottomH
+  const heightAxis: Axis = {
+    size: () => ref.current!.getBoundingClientRect().height,
+    limits: () => [min, Math.max(min, Math.min(max, window.innerHeight - 380))],
+    apply: (v) => (ref.current!.style.height = `${v}px`),
+    commit: onResizeHeight,
+  }
   return (
     <section ref={ref} className={`bottom-dock ${endMarker ? 'insert-end' : ''}`} style={height ? { height } : undefined} data-drop="bottom">
-      <ResizeEdge
-        side="top"
-        title="Drag to resize the bottom strip"
-        size={() => ref.current!.getBoundingClientRect().height}
-        limits={() => [min, Math.max(min, Math.min(max, window.innerHeight - 380))]}
-        apply={(v) => (ref.current!.style.height = `${v}px`)}
-        commit={onResizeHeight}
-      />
+      <ResizeHandle side="top" title="Drag to resize the bottom strip" y={heightAxis} />
       {ids.map((id, i) => (
         <DockCell
           key={id}
@@ -360,6 +389,7 @@ export function BottomDock({ ids, widthOf, height, render, onMove, onResizeCell,
           width={widthOf(id)}
           // the edge that faces the flexible panel, so resizing trades space with it
           edge={widthOf(id) === 'flex' ? null : flexAt >= 0 && i > flexAt ? 'left' : 'right'}
+          heightAxis={heightAxis}
           render={render}
           onMove={onMove}
           onResize={onResizeCell}

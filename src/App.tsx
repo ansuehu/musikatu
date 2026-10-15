@@ -13,8 +13,8 @@ import { LiveGuitarPanel } from './components/GuitarPanel'
 import { EqTab, isEqActive, LoopsTab, MarkersTab, MixTab, type ToolProps } from './components/ToolPanels'
 import { MetronomeEditor } from './components/MetronomeEditor'
 import { useLiveAnalysis } from './analysis/live'
-import { DEFAULT_LAYOUT, loadLayout, movePanel, panelsIn, saveLayout, toggleFloat, type Layout, type PanelId, type Place } from './layout/layout'
-import { BottomDock, FloatingLayer, PanelsBar, SidebarHost } from './layout/LayoutUI'
+import { DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, saveLayout, type Layout, type PanelId, type Place } from './layout/layout'
+import { BottomDock, DragLayer, SidebarHost, ToolsButton, ToolsWindow } from './layout/LayoutUI'
 import { ShortcutsDialog, type Capture } from './components/ShortcutsDialog'
 import { Btn } from './components/Controls'
 import { loadProject, projectKey, saveProject, uid, type Marker, type MarkerKind, type ProjectData, type SavedLoop } from './project'
@@ -211,17 +211,16 @@ export default function App() {
 
   // ---- layout ----
   useEffect(() => saveLayout(layout), [layout])
-  const movePanelTo = useCallback((id: PanelId, place: Place) => {
-    setLayout((l) => movePanel(l, id, place))
+  const movePanelTo = useCallback((id: PanelId, place: Place, before: PanelId | null = null) => {
+    setLayout((l) => movePanel(l, id, place, before))
     if (place === 'sidebar') setSidebarOpen(true)
   }, [])
   /** Brings a panel into view wherever it lives (a hidden one goes to the sidebar). */
   const focusPanel = useCallback((id: PanelId) => {
     setLayout((l) => {
       const place = l.place[id]
-      if (place === 'hidden') return movePanel(l, id, 'sidebar')
       if (place === 'sidebar') return { ...l, tab: id }
-      if (place === 'float') return l.open[id] ? { ...l, zOrder: [...l.zOrder.filter((x) => x !== id), id] } : toggleFloat(l, id)
+      if (place === 'tools') return openTools(l, id)
       return l
     })
     setSidebarOpen(true)
@@ -861,7 +860,7 @@ export default function App() {
   const disabled = !engine || !file
 
   // ---- live analysis: runs once for the keyboard, chord guess and guitar panels, wherever they are ----
-  const shown = (id: PanelId) => layout.place[id] === 'bottom' || (layout.place[id] === 'float' && !!layout.open[id]) || (layout.place[id] === 'sidebar' && sidebarOpen && layout.tab === id)
+  const shown = (id: PanelId) => layout.place[id] === 'bottom' || (layout.place[id] === 'tools' && layout.toolsOpen && layout.toolsTab === id) || (layout.place[id] === 'sidebar' && sidebarOpen && layout.tab === id)
   useLiveAnalysis({
     enabled: shown('keyboard') || shown('chordGuess') || shown('guitar'),
     peaks: file?.peaks ?? null,
@@ -1077,13 +1076,7 @@ if (m) engine?.seek(m.pos)
         onSpelling={setSpelling}
         onShortcuts={() => setShortcutsOpen(true)}
         tools={
-          <PanelsBar
-            layout={layout}
-            dots={panelDots}
-            onToggle={(id) => setLayout((l) => toggleFloat(l, id))}
-            onMove={movePanelTo}
-            onReset={() => setLayout(DEFAULT_LAYOUT)}
-          />
+          <ToolsButton layout={layout} dots={panelDots} onToggle={() => setLayout((l) => (l.toolsOpen ? { ...l, toolsOpen: false } : openTools(l)))} />
         }
         sidebarOpen={sidebarOpen}
         onSidebar={setSidebarOpen}
@@ -1227,7 +1220,12 @@ if (m) engine?.seek(m.pos)
         onMetronome={() => setMetronome((m) => ({ ...m, on: !m.on }))}
       />
 
-      <FloatingLayer layout={layout} render={renderPanel} onLayout={setLayout} onMove={movePanelTo} />
+      <ToolsWindow layout={layout} dots={panelDots} render={renderPanel} onLayout={setLayout} onMove={movePanelTo} onReset={() => setLayout(DEFAULT_LAYOUT)} />
+      <DragLayer
+        onDrop={(id, t) => movePanelTo(id, t.place, t.before)}
+        sidebarVisible={sidebarOpen && panelsIn(layout, 'sidebar').length > 0}
+        bottomVisible={panelsIn(layout, 'bottom').length > 0}
+      />
 
       {shortcutsOpen && (
         <ShortcutsDialog

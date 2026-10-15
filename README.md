@@ -27,7 +27,7 @@ A desktop workbench for transcribing music by ear: slow it down, loop it, see wh
 
 ## Layout
 
-Every tool is a panel you can put where you like: in the **sidebar**, in the **bottom strip**, as a **floating window**, or hidden. Use **Panels ▾** in the top bar, or the ⋯ menu on each panel. By default the Metronome, EQ and Mix open as floating windows from their buttons in the top bar. Windows can be moved and resized, and the layout is remembered.
+Every tool is a panel you can put where you like: in the **sidebar**, in the **bottom strip**, or in the **Tools window** (⚙ Tools in the top bar), a movable, resizable window with one tab per panel. Drag a tab, or the grip at the top of a bottom-strip panel, and drop it where you want it; a line shows where it will land. In the Tools window, **Show in main window** sends the open panel to the sidebar or the bottom strip. The layout is remembered, and **Reset layout** restores the defaults.
 
 ## Run
 

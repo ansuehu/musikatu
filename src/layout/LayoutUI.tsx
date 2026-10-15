@@ -1,10 +1,147 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Btn } from '../components/Controls'
-import { metaOf, PANELS, PLACE_LABEL, type FloatRect, type Layout, type PanelId, type Place } from './layout'
+import { metaOf, PLACE_LABEL, type Layout, type PanelId, type Place, type Rect } from './layout'
 
-const PLACES: Place[] = ['sidebar', 'bottom', 'float', 'hidden']
+// ======================= drag and drop =======================
 
-/** Closes a popover when clicking outside it or pressing Escape. */
+export interface DropTarget {
+  place: Place
+  /** Insert before this panel; null = at the end of the place. */
+  before: PanelId | null
+}
+
+interface DragState {
+  id: PanelId
+  x: number
+  y: number
+  target: DropTarget | null
+}
+
+let dragState: DragState | null = null
+const dragListeners = new Set<() => void>()
+const setDrag = (s: DragState | null) => {
+  dragState = s
+  for (const l of dragListeners) l()
+}
+const subscribeDrag = (l: () => void) => {
+  dragListeners.add(l)
+  return () => dragListeners.delete(l)
+}
+export const useDragState = () => useSyncExternalStore(subscribeDrag, () => dragState)
+
+let dropHandler: ((id: PanelId, t: DropTarget) => void) | null = null
+
+/**
+ * Where a drop at (x, y) would land: the nearest element marked `data-drop` (a place), refined by
+ * `data-drop-item` children (insert before or after them depending on which half is under the pointer).
+ */
+function targetAt(x: number, y: number): DropTarget | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    const h = el as HTMLElement
+    const item = h.closest<HTMLElement>('[data-drop-item]')
+    if (item) {
+      const place = item.dataset.dropPlace as Place
+      const r = item.getBoundingClientRect()
+      const vertical = item.dataset.dropAxis === 'y'
+      const after = vertical ? y > r.top + r.height / 2 : x > r.left + r.width / 2
+      return { place, before: after ? ((item.dataset.dropNext as PanelId) || null) : (item.dataset.dropItem as PanelId) }
+    }
+    const zone = h.closest<HTMLElement>('[data-drop]')
+    if (zone) return { place: zone.dataset.drop as Place, before: null }
+  }
+  return null
+}
+
+/**
+ * Pointer handlers for anything that can be dragged as panel `id`. A press that doesn't move more than
+ * a few pixels is a click (`onClick`); otherwise the panel follows the pointer until it's dropped.
+ */
+export function dragHandle(id: PanelId, onClick?: () => void) {
+  return {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return
+      if ((e.target as HTMLElement).closest('.place-menu, .float-close, input, select')) return
+      const x0 = e.clientX
+      const y0 = e.clientY
+      let dragging = false
+      const stop = () => {
+        window.removeEventListener('pointermove', move, true)
+        window.removeEventListener('pointerup', up, true)
+        window.removeEventListener('keydown', esc, true)
+      }
+      const move = (ev: PointerEvent) => {
+        if (!dragging && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return
+        dragging = true
+        ev.preventDefault()
+        setDrag({ id, x: ev.clientX, y: ev.clientY, target: targetAt(ev.clientX, ev.clientY) })
+      }
+      const up = (ev: PointerEvent) => {
+        stop()
+        if (!dragging) return onClick?.()
+        const t = targetAt(ev.clientX, ev.clientY)
+        setDrag(null)
+        if (t) dropHandler?.(id, t)
+      }
+      const esc = (ev: KeyboardEvent) => {
+        if (ev.key !== 'Escape') return
+        ev.stopPropagation()
+        stop()
+        setDrag(null)
+      }
+      window.addEventListener('pointermove', move, true)
+      window.addEventListener('pointerup', up, true)
+      window.addEventListener('keydown', esc, true)
+    },
+  }
+}
+
+/** Drop-target attributes for one item of a place (a tab or a bottom-strip panel). */
+const dropItem = (place: Place, id: PanelId, next: PanelId | undefined) => ({
+  'data-drop-item': id,
+  'data-drop-place': place,
+  'data-drop-next': next ?? '',
+})
+
+/** Is the current drop target "before `id` in `place`" (or the end of `place` when id is null)? */
+function useInsertMarker(place: Place, id: PanelId | null): boolean {
+  const d = useDragState()
+  return !!d?.target && d.target.place === place && d.target.before === id && d.id !== id
+}
+
+/**
+ * The drag preview, the drop handler, and temporary drop zones for places that aren't on screen right
+ * now (sidebar closed or empty, empty bottom strip).
+ */
+export function DragLayer({ onDrop, sidebarVisible, bottomVisible }: { onDrop: (id: PanelId, t: DropTarget) => void; sidebarVisible: boolean; bottomVisible: boolean }) {
+  dropHandler = onDrop
+  const d = useDragState()
+  useEffect(() => {
+    document.body.classList.toggle('panel-dragging', !!d)
+  }, [d])
+  if (!d) return null
+  const hover = (p: Place) => d.target?.place === p
+  return (
+    <>
+      {!sidebarVisible && (
+        <div className={`drop-zone side ${hover('sidebar') ? 'hover' : ''}`} data-drop="sidebar">
+          Sidebar
+        </div>
+      )}
+      {!bottomVisible && (
+        <div className={`drop-zone bottom ${hover('bottom') ? 'hover' : ''}`} data-drop="bottom">
+          Bottom strip
+        </div>
+      )}
+      <div className="drag-ghost" style={{ left: d.x + 14, top: d.y + 10 }}>
+        {metaOf(d.id).title}
+        <span className="drag-ghost-target">{d.target ? `→ ${PLACE_LABEL[d.target.place]}` : 'drop on a highlighted area'}</span>
+      </div>
+    </>
+  )
+}
+
+// ======================= ⋯ menu =======================
+
 function useDismiss(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -28,17 +165,19 @@ function useDismiss(open: boolean, close: () => void) {
   return ref
 }
 
-/** "⋯" button with a menu to choose where a panel lives. */
-export function PlaceMenu({ id, place, onMove, align = 'right' }: { id: PanelId; place: Place; onMove: (id: PanelId, p: Place) => void; align?: 'left' | 'right' }) {
+const PLACES: Place[] = ['sidebar', 'bottom', 'tools']
+
+/** "⋯" menu to move a panel elsewhere (dragging does the same). */
+export function PlaceMenu({ id, place, onMove }: { id: PanelId; place: Place; onMove: (id: PanelId, p: Place) => void }) {
   const [open, setOpen] = useState(false)
   const ref = useDismiss(open, () => setOpen(false))
   return (
     <div className="place-menu" ref={ref}>
-      <button type="button" className="place-trigger" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)} title={`Where to show “${metaOf(id).title}”`} aria-haspopup="menu" aria-expanded={open}>
+      <button type="button" className="place-trigger" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen(!open)} title={`Move “${metaOf(id).title}” (or drag it)`} aria-haspopup="menu" aria-expanded={open}>
         ⋯
       </button>
       {open && (
-        <div className={`menu-pop ${align}`} role="menu">
+        <div className="menu-pop right" role="menu">
           <div className="menu-title">Show {metaOf(id).title} in</div>
           {PLACES.map((pl) => (
             <button
@@ -63,31 +202,36 @@ export function PlaceMenu({ id, place, onMove, align = 'right' }: { id: PanelId;
   )
 }
 
-// ---------- sidebar ----------
+// ======================= tabs (sidebar and Tools window) =======================
 
-export function SidebarHost({
-  ids,
-  tab,
-  onTab,
-  dots,
-  render,
-  onMove,
-}: {
-  ids: PanelId[]
-  tab: PanelId | null
-  onTab: (id: PanelId) => void
-  dots: Set<PanelId>
-  render: (id: PanelId) => ReactNode
-  onMove: (id: PanelId, p: Place) => void
-}) {
-  const active = tab && ids.includes(tab) ? tab : ids[0]
+function PanelTab({ place, id, next, active, dot, onTab }: { place: Place; id: PanelId; next: PanelId | undefined; active: boolean; dot: boolean; onTab: (id: PanelId) => void }) {
+  const marker = useInsertMarker(place, id)
   return (
-    <aside className="sidebar">
-      <nav className="tabs" role="tablist">
-        {ids.map((id) => (
-          <Btn key={id} role="tab" aria-selected={active === id} className={`tab ${active === id ? 'on' : ''} ${dots.has(id) ? 'dot' : ''}`} onClick={() => onTab(id)}>
-            {metaOf(id).title}
-          </Btn>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={`btn tab ${active ? 'on' : ''} ${dot ? 'dot' : ''} ${marker ? 'insert-before' : ''}`}
+      onMouseDown={(e) => e.preventDefault()}
+      {...dropItem(place, id, next)}
+      {...dragHandle(id, () => onTab(id))}
+      title={place === 'tools' ? 'Click to open · drag onto the main window to show it there' : 'Click to open · drag to move'}
+    >
+      {metaOf(id).title}
+    </button>
+  )
+}
+
+// ======================= sidebar =======================
+
+export function SidebarHost({ ids, tab, onTab, dots, render, onMove }: { ids: PanelId[]; tab: PanelId | null; onTab: (id: PanelId) => void; dots: Set<PanelId>; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void }) {
+  const active = tab && ids.includes(tab) ? tab : ids[0]
+  const endMarker = useInsertMarker('sidebar', null)
+  return (
+    <aside className="sidebar" data-drop="sidebar">
+      <nav className={`tabs ${endMarker ? 'insert-end' : ''}`} role="tablist">
+        {ids.map((id, i) => (
+          <PanelTab key={id} place="sidebar" id={id} next={ids[i + 1]} active={active === id} dot={dots.has(id)} onTab={onTab} />
         ))}
         {active && <PlaceMenu id={active} place="sidebar" onMove={onMove} />}
       </nav>
@@ -96,87 +240,94 @@ export function SidebarHost({
   )
 }
 
-// ---------- bottom strip ----------
+// ======================= bottom strip =======================
+
+function DockCell({ id, next, render, onMove }: { id: PanelId; next: PanelId | undefined; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void }) {
+  const w = metaOf(id).bottomWidth
+  const marker = useInsertMarker('bottom', id)
+  // the analysis panels bring their own card styling; everything else gets a scrolling card
+  const bare = id === 'keyboard' || id === 'chordGuess' || id === 'guitar'
+  return (
+    <div className={`dock-cell ${w === 'flex' ? 'flex' : ''} ${marker ? 'insert-before' : ''}`} style={w === 'flex' ? undefined : { width: w }} {...dropItem('bottom', id, next)}>
+      <div className={bare ? 'dock-bare' : 'dock-card'}>{render(id)}</div>
+      <div className="dock-grip" {...dragHandle(id)} title="Drag to move this panel">
+        <span className="dock-grip-title">⠿ {metaOf(id).title}</span>
+        <PlaceMenu id={id} place="bottom" onMove={onMove} />
+      </div>
+    </div>
+  )
+}
 
 export function BottomDock({ ids, render, onMove }: { ids: PanelId[]; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void }) {
+  const endMarker = useInsertMarker('bottom', null)
   if (ids.length === 0) return null
   return (
-    <section className="bottom-dock">
-      {ids.map((id) => {
-        const w = metaOf(id).bottomWidth
-        // the analysis panels bring their own card styling; everything else gets a scrolling card
-        const bare = id === 'keyboard' || id === 'chordGuess' || id === 'guitar'
-        return (
-          <div key={id} className={`dock-cell ${w === 'flex' ? 'flex' : ''}`} style={w === 'flex' ? undefined : { width: w }}>
-            <div className={bare ? 'dock-bare' : 'dock-card'}>{render(id)}</div>
-            <div className="dock-menu">
-              <PlaceMenu id={id} place="bottom" onMove={onMove} />
-            </div>
-          </div>
-        )
-      })}
+    <section className={`bottom-dock ${endMarker ? 'insert-end' : ''}`} data-drop="bottom">
+      {ids.map((id, i) => (
+        <DockCell key={id} id={id} next={ids[i + 1]} render={render} onMove={onMove} />
+      ))}
     </section>
   )
 }
 
-// ---------- floating windows ----------
+// ======================= Tools window =======================
 
-const MIN_W = 200
-const MIN_H = 120
+const MIN_W = 300
+const MIN_H = 220
 
-function clampRect(r: FloatRect): FloatRect {
+function clampRect(r: Rect): Rect {
   const vw = window.innerWidth
   const vh = window.innerHeight
   const w = Math.max(MIN_W, Math.min(r.w, vw - 16))
   const h = Math.max(MIN_H, Math.min(r.h, vh - 16))
   // keep the title bar reachable
-  return { w, h, x: Math.max(8 - w + 80, Math.min(r.x, vw - 80)), y: Math.max(8, Math.min(r.y, vh - 40)) }
+  return { w, h, x: Math.max(80 - w, Math.min(r.x, vw - 80)), y: Math.max(8, Math.min(r.y, vh - 40)) }
 }
 
-function FloatingWindow({
-  id,
-  rect,
-  z,
-  onRect,
-  onClose,
-  onRaise,
-  onMove,
-  children,
-}: {
-  id: PanelId
-  rect: FloatRect
-  z: number
-  onRect: (r: FloatRect) => void
-  onClose: () => void
-  onRaise: () => void
-  onMove: (id: PanelId, p: Place) => void
-  children: ReactNode
-}) {
-  // live geometry while dragging; committed to the layout on release
-  const [live, setLive] = useState<FloatRect | null>(null)
-  // the latest geometry, readable from the release handler before React re-renders
-  const liveRef = useRef<FloatRect | null>(null)
-  const drag = useRef<{ mode: 'move' | 'size'; x: number; y: number; start: FloatRect } | null>(null)
-  const r = clampRect(live ?? rect)
+const defaultToolsRect = (): Rect => ({ x: Math.max(20, window.innerWidth - 330 - 400 - 24), y: 110, w: 400, h: 560 })
 
-  // re-clamp when the app window shrinks
+/** One movable, resizable, tabbed window holding every panel that isn't shown in the main window. */
+export function ToolsWindow({
+  layout,
+  dots,
+  render,
+  onLayout,
+  onMove,
+  onReset,
+}: {
+  layout: Layout
+  dots: Set<PanelId>
+  render: (id: PanelId) => ReactNode
+  onLayout: (fn: (l: Layout) => Layout) => void
+  onMove: (id: PanelId, p: Place) => void
+  onReset: () => void
+}) {
+  const [live, setLive] = useState<Rect | null>(null)
+  // the latest geometry, readable from the release handler before React re-renders
+  const liveRef = useRef<Rect | null>(null)
+  const drag = useRef<{ mode: 'move' | 'size'; x: number; y: number; start: Rect } | null>(null)
+  const endMarker = useInsertMarker('tools', null)
+
   useEffect(() => {
     const onResize = () => setLive((l) => (l ? clampRect(l) : null))
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  if (!layout.toolsOpen) return null
+  const rect = clampRect(live ?? layout.toolsRect ?? defaultToolsRect())
+  const ids = layout.order.filter((id) => layout.place[id] === 'tools')
+  const active = layout.toolsTab && ids.includes(layout.toolsTab) ? layout.toolsTab : ids[0]
+
   const begin = (mode: 'move' | 'size') => (e: React.PointerEvent) => {
-    if (e.button !== 0) return
-    if ((e.target as HTMLElement).closest('button, select, input')) return
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button, select, input')) return
     e.preventDefault()
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
-      /* capture is a nicety (keeps tracking outside the bar); dragging works without it */
+      /* capture is a nicety; dragging works without it */
     }
-    drag.current = { mode, x: e.clientX, y: e.clientY, start: r }
-    onRaise()
+    drag.current = { mode, x: e.clientX, y: e.clientY, start: rect }
   }
   const move = (e: React.PointerEvent) => {
     const d = drag.current
@@ -190,123 +341,66 @@ function FloatingWindow({
   const end = () => {
     if (!drag.current) return
     drag.current = null
-    if (liveRef.current) onRect(clampRect(liveRef.current))
+    const r = liveRef.current
     liveRef.current = null
     setLive(null)
+    if (r) onLayout((l) => ({ ...l, toolsRect: clampRect(r) }))
   }
 
   return (
-    <div className="float-win" style={{ left: r.x, top: r.y, width: r.w, height: r.h, zIndex: 100 + z }} onPointerDownCapture={onRaise} role="dialog" aria-label={metaOf(id).title}>
+    <div className="float-win tools-win" style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }} role="dialog" aria-label="Tools">
       <div className="float-head" onPointerDown={begin('move')} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
-        <span className="float-title">{metaOf(id).title}</span>
-        <PlaceMenu id={id} place="float" onMove={onMove} />
-        <button type="button" className="float-close" onMouseDown={(e) => e.preventDefault()} onClick={onClose} title="Close (reopen from the top bar)">
+        <span className="float-title">Tools</span>
+        <button type="button" className="link small-link" onMouseDown={(e) => e.preventDefault()} onClick={onReset} title="Put every panel back where it started">
+          Reset layout
+        </button>
+        <button type="button" className="float-close" onMouseDown={(e) => e.preventDefault()} onClick={() => onLayout((l) => ({ ...l, toolsOpen: false }))} title="Close (the Tools button reopens it)">
           ×
         </button>
       </div>
-      <div className="float-body">{children}</div>
+      <nav className={`tabs tools-tabs ${endMarker ? 'insert-end' : ''}`} role="tablist" data-drop="tools">
+        {ids.map((id, i) => (
+          <PanelTab key={id} place="tools" id={id} next={ids[i + 1]} active={active === id} dot={dots.has(id)} onTab={(t) => onLayout((l) => ({ ...l, toolsTab: t }))} />
+        ))}
+      </nav>
+      <div className="float-body" data-drop="tools">
+        {active ? (
+          <>
+            <div className="show-row">
+              <span className="muted small-text">Show in main window:</span>
+              <Btn className="small" onClick={() => onMove(active, 'sidebar')} title="Move this panel to the sidebar">
+                Sidebar
+              </Btn>
+              <Btn className="small" onClick={() => onMove(active, 'bottom')} title="Move this panel to the bottom strip">
+                Bottom strip
+              </Btn>
+            </div>
+            <div className="tools-content">{render(active)}</div>
+          </>
+        ) : (
+          <p className="empty-hint">Every panel is in the main window. Drag a tab or panel here (or use its ⋯ menu) to keep it in this window instead.</p>
+        )}
+      </div>
       <div className="float-resize" onPointerDown={begin('size')} onPointerMove={move} onPointerUp={end} onPointerCancel={end} title="Resize" />
     </div>
   )
 }
 
-export function FloatingLayer({
-  layout,
-  render,
-  onLayout,
-  onMove,
-}: {
-  layout: Layout
-  render: (id: PanelId) => ReactNode
-  onLayout: (fn: (l: Layout) => Layout) => void
-  onMove: (id: PanelId, p: Place) => void
-}) {
-  const ids = layout.order.filter((id) => layout.place[id] === 'float' && layout.open[id])
+/** Top-bar button that opens the Tools window; also a drop target for sending panels there. */
+export function ToolsButton({ layout, dots, onToggle }: { layout: Layout; dots: Set<PanelId>; onToggle: () => void }) {
+  const d = useDragState()
+  const hover = d?.target?.place === 'tools'
+  const anyDot = layout.order.some((id) => layout.place[id] === 'tools' && dots.has(id))
+  const count = layout.order.filter((id) => layout.place[id] === 'tools').length
   return (
-    <>
-      {ids.map((id) => (
-        <FloatingWindow
-          key={id}
-          id={id}
-          rect={layout.rects[id] ?? { x: 200, y: 80, ...metaOf(id).floatSize }}
-          z={Math.max(0, layout.zOrder.indexOf(id))}
-          onRect={(rect) => onLayout((l) => ({ ...l, rects: { ...l.rects, [id]: rect } }))}
-          onClose={() => onLayout((l) => ({ ...l, open: { ...l.open, [id]: false } }))}
-          onRaise={() => onLayout((l) => (l.zOrder[l.zOrder.length - 1] === id ? l : { ...l, zOrder: [...l.zOrder.filter((x) => x !== id), id] }))}
-          onMove={onMove}
-        >
-          {render(id)}
-        </FloatingWindow>
-      ))}
-    </>
-  )
-}
-
-// ---------- top bar: floating-panel buttons and the Panels menu ----------
-
-export function PanelsBar({
-  layout,
-  dots,
-  onToggle,
-  onMove,
-  onReset,
-}: {
-  layout: Layout
-  dots: Set<PanelId>
-  onToggle: (id: PanelId) => void
-  onMove: (id: PanelId, p: Place) => void
-  onReset: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useDismiss(open, () => setOpen(false))
-  const floating = layout.order.filter((id) => layout.place[id] === 'float')
-  return (
-    <div className="panels-bar">
-      {floating.map((id) => (
-        <Btn key={id} className={`small panel-toggle ${layout.open[id] ? 'on' : ''} ${dots.has(id) ? 'dot' : ''}`} onClick={() => onToggle(id)} title={`Show / hide the ${metaOf(id).title} window`} aria-pressed={!!layout.open[id]}>
-          {metaOf(id).title}
-        </Btn>
-      ))}
-      <div className="place-menu" ref={ref}>
-        <Btn className={`small ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title="Choose where each panel lives" aria-haspopup="dialog" aria-expanded={open}>
-          Panels ▾
-        </Btn>
-        {open && (
-          <div className="menu-pop right panels-pop" role="dialog" aria-label="Panel layout">
-            <div className="menu-title">Where each panel lives</div>
-            <div className="panels-grid">
-              <span />
-              {PLACES.map((pl) => (
-                <span key={pl} className="panels-col">
-                  {pl === 'sidebar' ? 'Side' : pl === 'bottom' ? 'Bottom' : pl === 'float' ? 'Window' : 'Hidden'}
-                </span>
-              ))}
-              {PANELS.map((p) => (
-                <PanelRow key={p.id} id={p.id} place={layout.place[p.id]} onMove={onMove} />
-              ))}
-            </div>
-            <div className="button-row panels-foot">
-              <span className="muted small-text">Also from each panel’s ⋯ menu.</span>
-              <Btn className="small" onClick={onReset}>
-                Reset layout
-              </Btn>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function PanelRow({ id, place, onMove }: { id: PanelId; place: Place; onMove: (id: PanelId, p: Place) => void }) {
-  return (
-    <>
-      <span className="panels-name">{metaOf(id).title}</span>
-      {PLACES.map((pl) => (
-        <label key={pl} className="panels-cell" title={`${metaOf(id).title}: ${PLACE_LABEL[pl]}`}>
-          <input type="radio" name={`place-${id}`} checked={place === pl} onChange={() => onMove(id, pl)} />
-        </label>
-      ))}
-    </>
+    <Btn
+      className={`tools-btn ${layout.toolsOpen ? 'on' : ''} ${anyDot ? 'dot' : ''} ${hover ? 'drop-hover' : ''}`}
+      onClick={onToggle}
+      title={`Tools window (${count} panel${count === 1 ? '' : 's'}) — drop a panel here to move it there`}
+      aria-pressed={layout.toolsOpen}
+      data-drop="tools"
+    >
+      ⚙ Tools
+    </Btn>
   )
 }

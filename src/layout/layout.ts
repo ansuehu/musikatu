@@ -1,39 +1,39 @@
-/** Modular layout: every tool is a panel that lives in the sidebar, the bottom strip, a floating window, or nowhere. */
+/**
+ * Modular layout. Every tool is a panel shown either in the main window (sidebar tabs or the bottom strip)
+ * or as a tab of the Tools window, a single movable, tabbed window like a settings dialog.
+ */
 
 export type PanelId = 'stems' | 'chords' | 'notes' | 'beats' | 'practice' | 'metronome' | 'eq' | 'mix' | 'keyboard' | 'chordGuess' | 'guitar'
-export type Place = 'sidebar' | 'bottom' | 'float' | 'hidden'
+export type Place = 'sidebar' | 'bottom' | 'tools'
 
 export interface PanelMeta {
   id: PanelId
   title: string
-  /** Width in the bottom strip: a fixed number of px, or 'flex' to take the remaining space. */
+  /** Width in the bottom strip: px, or 'flex' to take the remaining space. */
   bottomWidth: number | 'flex'
-  /** Default floating window size. */
-  floatSize: { w: number; h: number }
 }
 
 export const PANELS: PanelMeta[] = [
-  { id: 'stems', title: 'Stems', bottomWidth: 330, floatSize: { w: 340, h: 560 } },
-  { id: 'chords', title: 'Chords', bottomWidth: 340, floatSize: { w: 360, h: 560 } },
-  { id: 'notes', title: 'Notes', bottomWidth: 330, floatSize: { w: 340, h: 520 } },
-  { id: 'beats', title: 'Beats', bottomWidth: 330, floatSize: { w: 340, h: 520 } },
-  { id: 'practice', title: 'Practice', bottomWidth: 330, floatSize: { w: 340, h: 520 } },
-  { id: 'metronome', title: 'Metronome', bottomWidth: 320, floatSize: { w: 330, h: 440 } },
-  { id: 'eq', title: 'EQ', bottomWidth: 340, floatSize: { w: 340, h: 470 } },
-  { id: 'mix', title: 'Mix', bottomWidth: 300, floatSize: { w: 310, h: 450 } },
-  { id: 'keyboard', title: 'Keyboard & spectrum', bottomWidth: 'flex', floatSize: { w: 820, h: 240 } },
-  { id: 'chordGuess', title: 'Chord guess', bottomWidth: 210, floatSize: { w: 230, h: 230 } },
-  { id: 'guitar', title: 'Guitar', bottomWidth: 200, floatSize: { w: 220, h: 250 } },
+  { id: 'stems', title: 'Stems', bottomWidth: 330 },
+  { id: 'chords', title: 'Chords', bottomWidth: 340 },
+  { id: 'notes', title: 'Notes', bottomWidth: 330 },
+  { id: 'beats', title: 'Beats', bottomWidth: 330 },
+  { id: 'practice', title: 'Practice', bottomWidth: 330 },
+  { id: 'metronome', title: 'Metronome', bottomWidth: 320 },
+  { id: 'eq', title: 'EQ', bottomWidth: 340 },
+  { id: 'mix', title: 'Mix', bottomWidth: 300 },
+  { id: 'keyboard', title: 'Keyboard & spectrum', bottomWidth: 'flex' },
+  { id: 'chordGuess', title: 'Chord guess', bottomWidth: 210 },
+  { id: 'guitar', title: 'Guitar', bottomWidth: 200 },
 ]
 
 export const PLACE_LABEL: Record<Place, string> = {
   sidebar: 'Sidebar',
   bottom: 'Bottom strip',
-  float: 'Floating window',
-  hidden: 'Hidden',
+  tools: 'Tools window',
 }
 
-export interface FloatRect {
+export interface Rect {
   x: number
   y: number
   w: number
@@ -42,16 +42,14 @@ export interface FloatRect {
 
 export interface Layout {
   place: Record<PanelId, Place>
-  /** Display order within the sidebar and the bottom strip. */
+  /** Display order, shared by the sidebar, the bottom strip and the Tools window. */
   order: PanelId[]
-  /** Floating window geometry, remembered even while docked. */
-  rects: Partial<Record<PanelId, FloatRect>>
-  /** Which floating windows are open. */
-  open: Partial<Record<PanelId, boolean>>
   /** Active sidebar tab. */
   tab: PanelId | null
-  /** Stacking order of floating windows, last on top. */
-  zOrder: PanelId[]
+  /** Active Tools-window tab. */
+  toolsTab: PanelId | null
+  toolsOpen: boolean
+  toolsRect: Rect | null
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -60,42 +58,54 @@ export const DEFAULT_LAYOUT: Layout = {
     chords: 'sidebar',
     notes: 'sidebar',
     beats: 'sidebar',
-    practice: 'sidebar',
-    metronome: 'float',
-    eq: 'float',
-    mix: 'float',
+    practice: 'tools',
+    metronome: 'tools',
+    eq: 'tools',
+    mix: 'tools',
     keyboard: 'bottom',
     chordGuess: 'bottom',
     guitar: 'bottom',
   },
   order: PANELS.map((p) => p.id),
-  rects: {},
-  open: {},
   tab: 'stems',
-  zOrder: [],
+  toolsTab: 'practice',
+  toolsOpen: false,
+  toolsRect: null,
 }
 
 export const metaOf = (id: PanelId) => PANELS.find((p) => p.id === id)!
+export const panelsIn = (l: Layout, place: Place) => l.order.filter((id) => l.place[id] === place)
 
-const KEY = 'musikatu.layout.v1'
+const KEY = 'musikatu.layout.v2'
+const OLD_KEY = 'musikatu.layout.v1'
 
-/** Saved layout merged over the defaults, so panels added in later versions still get a place. */
+/** Saved layout merged over the defaults (panels added later still get a place); v1 layouts are migrated. */
 export function loadLayout(): Layout {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Layout> | null
-    if (!saved) return DEFAULT_LAYOUT
-    const known = new Set(PANELS.map((p) => p.id))
-    const order = [...(saved.order ?? []).filter((id) => known.has(id)), ...PANELS.map((p) => p.id).filter((id) => !(saved.order ?? []).includes(id))]
-    return {
-      ...DEFAULT_LAYOUT,
-      ...saved,
-      place: { ...DEFAULT_LAYOUT.place, ...(saved.place ?? {}) },
-      order,
-      zOrder: (saved.zOrder ?? []).filter((id) => known.has(id)),
+    const raw = localStorage.getItem(KEY)
+    if (raw) return normalise(JSON.parse(raw) as Partial<Layout>)
+    const old = JSON.parse(localStorage.getItem(OLD_KEY) ?? 'null') as { place?: Record<string, string>; order?: PanelId[]; tab?: PanelId } | null
+    if (old?.place) {
+      // v1 had floating windows and "hidden": both now live in the Tools window
+      const place = Object.fromEntries(Object.entries(old.place).map(([id, p]) => [id, p === 'sidebar' || p === 'bottom' ? p : 'tools'])) as Record<PanelId, Place>
+      return normalise({ place, order: old.order, tab: old.tab ?? null })
     }
   } catch {
-    return DEFAULT_LAYOUT
+    /* corrupt storage: defaults */
   }
+  return DEFAULT_LAYOUT
+}
+
+function normalise(saved: Partial<Layout>): Layout {
+  const known = PANELS.map((p) => p.id)
+  const order = [...(saved.order ?? []).filter((id) => known.includes(id)), ...known.filter((id) => !(saved.order ?? []).includes(id))]
+  const place = { ...DEFAULT_LAYOUT.place }
+  for (const id of known) {
+    const p = saved.place?.[id]
+    if (p === 'sidebar' || p === 'bottom' || p === 'tools') place[id] = p
+  }
+  const l: Layout = { ...DEFAULT_LAYOUT, ...saved, place, order }
+  return fixTabs(l)
 }
 
 export function saveLayout(l: Layout): void {
@@ -106,48 +116,37 @@ export function saveLayout(l: Layout): void {
   }
 }
 
-export const panelsIn = (l: Layout, place: Place) => l.order.filter((id) => l.place[id] === place)
-
-/** Where a new floating window appears: cascading from the top-right of the workspace, clear of the sidebar. */
-const SIDEBAR_W = 330
-function defaultRect(l: Layout, id: PanelId): FloatRect {
-  const { w, h } = metaOf(id).floatSize
-  const n = Object.values(l.open).filter(Boolean).length
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 1400
-  return { x: Math.max(20, vw - SIDEBAR_W - w - 24 - n * 28), y: 110 + n * 28, w, h }
-}
-
-export function movePanel(l: Layout, id: PanelId, place: Place): Layout {
-  const next: Layout = { ...l, place: { ...l.place, [id]: place } }
-  if (place === 'float') {
-    next.open = { ...l.open, [id]: true }
-    next.rects = { ...l.rects, [id]: l.rects[id] ?? defaultRect(l, id) }
-    next.zOrder = [...l.zOrder.filter((x) => x !== id), id]
-  }
-  if (place === 'sidebar') next.tab = id
-  else if (l.tab === id) next.tab = panelsIn(next, 'sidebar')[0] ?? null
-  return next
-}
-
-export function toggleFloat(l: Layout, id: PanelId): Layout {
-  const open = !l.open[id]
+/** Keeps the active sidebar / Tools tabs pointing at panels that are actually there. */
+function fixTabs(l: Layout): Layout {
+  const side = panelsIn(l, 'sidebar')
+  const tools = panelsIn(l, 'tools')
   return {
     ...l,
-    open: { ...l.open, [id]: open },
-    rects: { ...l.rects, [id]: l.rects[id] ?? defaultRect(l, id) },
-    zOrder: open ? [...l.zOrder.filter((x) => x !== id), id] : l.zOrder,
+    tab: l.tab && side.includes(l.tab) ? l.tab : (side[0] ?? null),
+    toolsTab: l.toolsTab && tools.includes(l.toolsTab) ? l.toolsTab : (tools[0] ?? null),
   }
 }
 
-export function raise(l: Layout, id: PanelId): Layout {
-  if (l.zOrder[l.zOrder.length - 1] === id) return l
-  return { ...l, zOrder: [...l.zOrder.filter((x) => x !== id), id] }
+/**
+ * Puts panel `id` in `place`, before panel `before` (or at the end of that place), and makes it the
+ * active tab there. Used by drag-and-drop, the Show buttons and the ⋯ menus.
+ */
+export function movePanel(l: Layout, id: PanelId, place: Place, before: PanelId | null = null): Layout {
+  const rest = l.order.filter((x) => x !== id)
+  let i: number
+  if (before && before !== id && rest.includes(before)) i = rest.indexOf(before)
+  else {
+    // after the last panel already in that place, so it lands at the end of that group
+    const last = rest.map((x, k) => (l.place[x] === place ? k : -1)).filter((k) => k >= 0).pop()
+    i = last === undefined ? rest.length : last + 1
+  }
+  rest.splice(i, 0, id)
+  const next: Layout = { ...l, order: rest, place: { ...l.place, [id]: place } }
+  if (place === 'sidebar') next.tab = id
+  if (place === 'tools') next.toolsTab = id
+  return fixTabs(next)
 }
 
-/** Moves `id` before `before` (or to the end) in the shared order. */
-export function reorder(l: Layout, id: PanelId, before: PanelId | null): Layout {
-  const rest = l.order.filter((x) => x !== id)
-  const i = before ? rest.indexOf(before) : rest.length
-  rest.splice(i < 0 ? rest.length : i, 0, id)
-  return { ...l, order: rest }
+export function openTools(l: Layout, tab?: PanelId): Layout {
+  return fixTabs({ ...l, toolsOpen: true, toolsTab: tab ?? l.toolsTab })
 }

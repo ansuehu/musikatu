@@ -1596,18 +1596,6 @@ input[type='range']:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.dock-menu {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-  z-index: 2;
-}
-.dock-cell:hover .dock-menu,
-.dock-menu:focus-within {
-  opacity: 1;
-}
 .keyboard-panel {
   position: relative;
   height: 100%;
@@ -1637,10 +1625,6 @@ input[type='range']:disabled {
   background: var(--panel-2);
   border-color: var(--border);
   color: var(--text);
-}
-.dock-menu .place-trigger {
-  background: color-mix(in srgb, var(--panel) 85%, transparent);
-  border-color: var(--border);
 }
 .menu-pop {
   position: absolute;
@@ -1763,52 +1747,190 @@ input[type='range']:disabled {
   background: linear-gradient(135deg, transparent 50%, #4a5368 50%, #4a5368 58%, transparent 58%, transparent 70%, #4a5368 70%, #4a5368 78%, transparent 78%);
 }
 
-.panels-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+
+/* ---------- drag and drop ---------- */
+body.panel-dragging,
+body.panel-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
 }
-.btn.small.panel-toggle {
+body.panel-dragging [data-drop] {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -2px;
+}
+.insert-before {
   position: relative;
 }
-.btn.small.panel-toggle.dot::after {
+.insert-before::before {
   content: '';
   position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 5px;
-  height: 5px;
+  left: -4px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  z-index: 5;
+}
+.insert-end > :last-child,
+.tabs.insert-end > .tab:last-of-type {
+  position: relative;
+}
+.insert-end > .dock-cell:last-child::after,
+.tabs.insert-end > .tab:last-of-type::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  z-index: 5;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 3000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.55);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.drag-ghost-target {
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--accent);
+}
+.drop-zone {
+  position: fixed;
+  z-index: 2500;
+  display: grid;
+  place-items: center;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, rgb(13 15 19 / 0.85));
+  color: var(--accent);
+  font-weight: 700;
+}
+.drop-zone.hover {
+  background: color-mix(in srgb, var(--accent) 18%, rgb(13 15 19 / 0.85));
+}
+.drop-zone.side {
+  top: 60px;
+  right: 10px;
+  bottom: 160px;
+  width: 300px;
+}
+.drop-zone.bottom {
+  left: 16px;
+  right: 340px;
+  bottom: 160px;
+  height: 140px;
+}
+.tools-btn.drop-hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.btn.tools-btn {
+  position: relative;
+}
+.btn.tools-btn.dot::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--loop);
 }
-.panels-pop {
-  width: 330px;
-}
-.panels-grid {
-  display: grid;
-  grid-template-columns: 1fr repeat(4, 52px);
+
+/* bottom-strip grip: appears on hover, drag it to move the panel */
+.dock-grip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  display: flex;
   align-items: center;
-  row-gap: 2px;
-  padding: 0 6px;
+  gap: 4px;
+  padding: 0 4px 0 8px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--border);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: grab;
+  z-index: 3;
+  touch-action: none;
 }
-.panels-col {
-  text-align: center;
-  color: var(--muted);
+.dock-cell:hover .dock-grip,
+.dock-grip:focus-within {
+  opacity: 1;
+}
+.dock-grip-title {
+  flex: 1;
   font-size: 11px;
-  padding-bottom: 4px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.panels-name {
-  font-size: 12.5px;
-  padding: 3px 0;
+
+/* Tools window */
+.tools-win {
+  z-index: 200;
 }
-.panels-cell {
-  display: grid;
-  place-items: center;
-  cursor: pointer;
+.tools-win .float-head .link {
+  margin-right: 4px;
 }
-.panels-foot {
-  justify-content: space-between;
-  margin-top: 8px;
-  padding: 8px 6px 2px;
-  border-top: 1px solid var(--border);
+.tools-tabs {
+  flex-wrap: wrap;
+  padding: 6px 6px 0;
+  flex: none;
+}
+.tools-tabs .btn.tab {
+  flex: 0 1 auto;
+  padding: 0 10px;
+}
+.show-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.tools-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tools-content > .keyboard-panel,
+.tools-content > .analysis-info,
+.tools-content > .guitar-panel {
+  flex: 1;
+}
+
+/* with many panels in the sidebar the tabs wrap onto a second row instead of clipping their names */
+.sidebar .tabs {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.sidebar .btn.tab {
+  flex: 1 0 auto;
+  padding: 0 8px;
 }

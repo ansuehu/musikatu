@@ -42,7 +42,7 @@ body,
   min-height: 0;
 }
 .body.with-sidebar {
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-w, 330px);
 }
 
 /* ---------- buttons & inputs ---------- */
@@ -532,6 +532,7 @@ input[type='radio'] {
 
 /* ---------- sidebar ---------- */
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1562,6 +1563,7 @@ input[type='range']:disabled {
 
 /* ---------- modular layout ---------- */
 .bottom-dock {
+  position: relative;
   flex: none;
   display: flex;
   gap: 8px;
@@ -1933,4 +1935,68 @@ body.panel-dragging [data-drop] {
 .sidebar .btn.tab {
   flex: 1 0 auto;
   padding: 0 8px;
+}
+
+/* ---------- resizing ---------- */
+.resize-edge {
+  position: absolute;
+  z-index: 6;
+  touch-action: none;
+}
+.resize-edge.left,
+.resize-edge.right {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+}
+.resize-edge.left {
+  left: -6px;
+}
+.resize-edge.right {
+  right: -7px;
+}
+.resize-edge.top {
+  top: -7px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+}
+.resize-edge::after {
+  content: '';
+  position: absolute;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.resize-edge.left::after,
+.resize-edge.right::after {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+}
+.resize-edge.top::after {
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 2px;
+}
+.resize-edge:hover::after,
+body.resizing-x .resize-edge.left:active::after,
+body.resizing-x .resize-edge.right:active::after,
+body.resizing-y .resize-edge.top:active::after {
+  opacity: 0.8;
+}
+body.resizing-x,
+body.resizing-x * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+body.resizing-y,
+body.resizing-y * {
+  cursor: row-resize !important;
+  user-select: none;
 }

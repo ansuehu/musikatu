@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Btn } from '../components/Controls'
-import { metaOf, PLACE_LABEL, type Layout, type PanelId, type Place, type Rect } from './layout'
+import { metaOf, PLACE_LABEL, SIZE_LIMITS, type Layout, type PanelId, type Place, type Rect } from './layout'
 
 // ======================= drag and drop =======================
 
@@ -202,6 +202,47 @@ export function PlaceMenu({ id, place, onMove }: { id: PanelId; place: Place; on
   )
 }
 
+// ======================= resizing =======================
+
+/**
+ * A thin edge you drag to resize the element it sits on. While dragging, `apply` updates the DOM directly
+ * (no React render per pointer move) and the final size goes to `commit`; a double-click resets (null).
+ * `limits` is read when the drag starts, so it can depend on the space available at that moment.
+ */
+function ResizeEdge({ side, size, limits, apply, commit, title }: { side: 'left' | 'right' | 'top'; size: () => number; limits: () => [number, number]; apply: (v: number) => void; commit: (v: number | null) => void; title: string }) {
+  return (
+    <div
+      className={`resize-edge ${side}`}
+      title={`${title} (double-click to reset)`}
+      onDoubleClick={() => commit(null)}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return
+        e.preventDefault()
+        e.stopPropagation()
+        const start = size()
+        const [min, max] = limits()
+        const x0 = e.clientX
+        const y0 = e.clientY
+        let v = start
+        document.body.classList.add(side === 'top' ? 'resizing-y' : 'resizing-x')
+        const move = (ev: PointerEvent) => {
+          const d = side === 'left' ? x0 - ev.clientX : side === 'right' ? ev.clientX - x0 : y0 - ev.clientY
+          v = Math.round(Math.max(min, Math.min(max, start + d)))
+          apply(v)
+        }
+        const up = () => {
+          window.removeEventListener('pointermove', move, true)
+          window.removeEventListener('pointerup', up, true)
+          document.body.classList.remove('resizing-x', 'resizing-y')
+          if (v !== start) commit(v)
+        }
+        window.addEventListener('pointermove', move, true)
+        window.addEventListener('pointerup', up, true)
+      }}
+    />
+  )
+}
+
 // ======================= tabs (sidebar and Tools window) =======================
 
 function PanelTab({ place, id, next, active, dot, onTab }: { place: Place; id: PanelId; next: PanelId | undefined; active: boolean; dot: boolean; onTab: (id: PanelId) => void }) {
@@ -224,11 +265,21 @@ function PanelTab({ place, id, next, active, dot, onTab }: { place: Place; id: P
 
 // ======================= sidebar =======================
 
-export function SidebarHost({ ids, tab, onTab, dots, render, onMove }: { ids: PanelId[]; tab: PanelId | null; onTab: (id: PanelId) => void; dots: Set<PanelId>; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void }) {
+export function SidebarHost({ ids, tab, onTab, dots, render, onMove, onResize }: { ids: PanelId[]; tab: PanelId | null; onTab: (id: PanelId) => void; dots: Set<PanelId>; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void; onResize: (w: number | null) => void }) {
   const active = tab && ids.includes(tab) ? tab : ids[0]
   const endMarker = useInsertMarker('sidebar', null)
+  const ref = useRef<HTMLElement>(null)
+  const { min, max } = SIZE_LIMITS.sidebarW
   return (
-    <aside className="sidebar" data-drop="sidebar">
+    <aside className="sidebar" data-drop="sidebar" ref={ref}>
+      <ResizeEdge
+        side="left"
+        title="Drag to resize the sidebar"
+        size={() => ref.current!.getBoundingClientRect().width}
+        limits={() => [min, Math.max(min, Math.min(max, window.innerWidth - 480))]}
+        apply={(v) => ref.current!.parentElement!.style.setProperty('--sidebar-w', `${v}px`)}
+        commit={onResize}
+      />
       <nav className={`tabs ${endMarker ? 'insert-end' : ''}`} role="tablist">
         {ids.map((id, i) => (
           <PanelTab key={id} place="sidebar" id={id} next={ids[i + 1]} active={active === id} dot={dots.has(id)} onTab={onTab} />
@@ -242,13 +293,32 @@ export function SidebarHost({ ids, tab, onTab, dots, render, onMove }: { ids: Pa
 
 // ======================= bottom strip =======================
 
-function DockCell({ id, next, render, onMove }: { id: PanelId; next: PanelId | undefined; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void }) {
-  const w = metaOf(id).bottomWidth
+function DockCell({ id, next, width, edge, render, onMove, onResize }: { id: PanelId; next: PanelId | undefined; width: number | 'flex'; edge: 'left' | 'right' | null; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void; onResize: (id: PanelId, w: number | null) => void }) {
   const marker = useInsertMarker('bottom', id)
+  const ref = useRef<HTMLDivElement>(null)
   // the analysis panels bring their own card styling; everything else gets a scrolling card
   const bare = id === 'keyboard' || id === 'chordGuess' || id === 'guitar'
   return (
-    <div className={`dock-cell ${w === 'flex' ? 'flex' : ''} ${marker ? 'insert-before' : ''}`} style={w === 'flex' ? undefined : { width: w }} {...dropItem('bottom', id, next)}>
+    <div ref={ref} className={`dock-cell ${width === 'flex' ? 'flex' : ''} ${marker ? 'insert-before' : ''}`} style={width === 'flex' ? undefined : { width }} {...dropItem('bottom', id, next)}>
+      {edge && (
+        <ResizeEdge
+          side={edge}
+          title={`Drag to resize ${metaOf(id).title}`}
+          size={() => ref.current!.getBoundingClientRect().width}
+          limits={() => {
+            // grow only into the space the flexible panel can give up (or the strip's free space)
+            const cell = ref.current!
+            const strip = cell.parentElement!
+            const flex = strip.querySelector<HTMLElement>('.dock-cell.flex')
+            const used = [...strip.children].reduce((sum, c) => sum + c.getBoundingClientRect().width, 0) + 8 * (strip.children.length - 1)
+            const slack = flex ? flex.getBoundingClientRect().width - 260 : strip.getBoundingClientRect().width - used
+            const w = cell.getBoundingClientRect().width
+            return [SIZE_LIMITS.cellW.min, Math.max(w, Math.min(SIZE_LIMITS.cellW.max, w + slack))]
+          }}
+          apply={(v) => (ref.current!.style.width = `${v}px`)}
+          commit={(v) => onResize(id, v)}
+        />
+      )}
       <div className={bare ? 'dock-bare' : 'dock-card'}>{render(id)}</div>
       <div className="dock-grip" {...dragHandle(id)} title="Drag to move this panel">
         <span className="dock-grip-title">⠿ {metaOf(id).title}</span>
@@ -258,13 +328,42 @@ function DockCell({ id, next, render, onMove }: { id: PanelId; next: PanelId | u
   )
 }
 
-export function BottomDock({ ids, render, onMove }: { ids: PanelId[]; render: (id: PanelId) => ReactNode; onMove: (id: PanelId, p: Place) => void }) {
+export function BottomDock({ ids, widthOf, height, render, onMove, onResizeCell, onResizeHeight }: {
+  ids: PanelId[]
+  widthOf: (id: PanelId) => number | 'flex'
+  height: number | null
+  render: (id: PanelId) => ReactNode
+  onMove: (id: PanelId, p: Place) => void
+  onResizeCell: (id: PanelId, w: number | null) => void
+  onResizeHeight: (h: number | null) => void
+}) {
   const endMarker = useInsertMarker('bottom', null)
+  const ref = useRef<HTMLElement>(null)
   if (ids.length === 0) return null
+  const flexAt = ids.findIndex((id) => widthOf(id) === 'flex')
+  const { min, max } = SIZE_LIMITS.bottomH
   return (
-    <section className={`bottom-dock ${endMarker ? 'insert-end' : ''}`} data-drop="bottom">
+    <section ref={ref} className={`bottom-dock ${endMarker ? 'insert-end' : ''}`} style={height ? { height } : undefined} data-drop="bottom">
+      <ResizeEdge
+        side="top"
+        title="Drag to resize the bottom strip"
+        size={() => ref.current!.getBoundingClientRect().height}
+        limits={() => [min, Math.max(min, Math.min(max, window.innerHeight - 380))]}
+        apply={(v) => (ref.current!.style.height = `${v}px`)}
+        commit={onResizeHeight}
+      />
       {ids.map((id, i) => (
-        <DockCell key={id} id={id} next={ids[i + 1]} render={render} onMove={onMove} />
+        <DockCell
+          key={id}
+          id={id}
+          next={ids[i + 1]}
+          width={widthOf(id)}
+          // the edge that faces the flexible panel, so resizing trades space with it
+          edge={widthOf(id) === 'flex' ? null : flexAt >= 0 && i > flexAt ? 'left' : 'right'}
+          render={render}
+          onMove={onMove}
+          onResize={onResizeCell}
+        />
       ))}
     </section>
   )

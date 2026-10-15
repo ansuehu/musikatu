@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn } from '../src/layout/layout.ts'
+import { cellWidth, DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, setCellWidth, setSize } from '../src/layout/layout.ts'
 
 test('defaults: sidebar, bottom strip, and the rest in the Tools window', () => {
   assert.deepEqual(panelsIn(DEFAULT_LAYOUT, 'sidebar'), ['stems', 'chords', 'notes', 'beats'])
@@ -40,4 +40,22 @@ test('a v1 layout migrates: floating and hidden panels go to the Tools window', 
   assert.equal(l.place.mix, 'tools')
   assert.equal(l.place.stems, 'sidebar')
   assert.equal(l.place.keyboard, 'bottom')
+})
+
+test('sizes are clamped, reset with null, and bad saved values are dropped', () => {
+  let l = setSize(DEFAULT_LAYOUT, 'sidebarW', 5000)
+  assert.equal(l.sidebarW, 760)
+  l = setSize(l, 'bottomH', 50)
+  assert.equal(l.bottomH, 140)
+  l = setCellWidth(l, 'guitar', 333.4)
+  assert.equal(cellWidth(l, 'guitar'), 333)
+  assert.equal(cellWidth(l, 'keyboard'), 'flex')
+  l = setCellWidth(l, 'guitar', null)
+  assert.equal(cellWidth(l, 'guitar'), 200)
+  const store = new Map<string, string>([['musikatu.layout.v2', JSON.stringify({ ...DEFAULT_LAYOUT, sidebarW: 'wide', bottomH: 300, widths: { eq: 410, bogus: 3, mix: null } })]])
+  ;(globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: () => {} }
+  const loaded = loadLayout()
+  assert.equal(loaded.sidebarW, null)
+  assert.equal(loaded.bottomH, 300)
+  assert.deepEqual(loaded.widths, { eq: 410 })
 })

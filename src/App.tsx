@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { AudioEngine, type Timbre } from './audio/AudioEngine'
 import { FLAT_EQ, type EqState } from './audio/eq'
 import { TRANSPOSITIONS, type Spelling } from './analysis/notes'
@@ -13,7 +13,7 @@ import { LiveGuitarPanel } from './components/GuitarPanel'
 import { EqTab, isEqActive, LoopsTab, MarkersTab, MixTab, type ToolProps } from './components/ToolPanels'
 import { MetronomeEditor } from './components/MetronomeEditor'
 import { useLiveAnalysis } from './analysis/live'
-import { DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, saveLayout, type Layout, type PanelId, type Place } from './layout/layout'
+import { cellWidth, DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, saveLayout, setCellWidth, setSize, SIZE_LIMITS, type Layout, type PanelId, type Place } from './layout/layout'
 import { BottomDock, DragLayer, SidebarHost, ToolsButton, ToolsWindow } from './layout/LayoutUI'
 import { ShortcutsDialog, type Capture } from './components/ShortcutsDialog'
 import { Btn } from './components/Controls'
@@ -1083,7 +1083,10 @@ if (m) engine?.seek(m.pos)
         disabled={disabled}
       />
 
-      <div className={`body ${sidebarOpen ? 'with-sidebar' : ''}`}>
+      <div
+        className={`body ${sidebarOpen && panelsIn(layout, 'sidebar').length > 0 ? 'with-sidebar' : ''}`}
+        style={{ '--sidebar-w': `${layout.sidebarW ?? SIZE_LIMITS.sidebarW.def}px` } as CSSProperties}
+      >
         <main className="workspace">
           {file ? (
             <>
@@ -1168,7 +1171,15 @@ if (m) engine?.seek(m.pos)
               }}
             />
           )}
-          <BottomDock ids={panelsIn(layout, 'bottom')} render={renderPanel} onMove={movePanelTo} />
+          <BottomDock
+            ids={panelsIn(layout, 'bottom')}
+            widthOf={(id) => cellWidth(layout, id)}
+            height={layout.bottomH}
+            render={renderPanel}
+            onMove={movePanelTo}
+            onResizeCell={(id, w) => setLayout((l) => setCellWidth(l, id, w))}
+            onResizeHeight={(h) => setLayout((l) => setSize(l, 'bottomH', h))}
+          />
           {status && (
             <div className={`toast ${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>
               {status.text}
@@ -1188,7 +1199,7 @@ if (m) engine?.seek(m.pos)
         </main>
 
         {sidebarOpen && panelsIn(layout, 'sidebar').length > 0 && (
-          <SidebarHost ids={panelsIn(layout, 'sidebar')} tab={layout.tab} onTab={(id) => setLayout((l) => ({ ...l, tab: id }))} dots={panelDots} render={renderPanel} onMove={movePanelTo} />
+          <SidebarHost ids={panelsIn(layout, 'sidebar')} tab={layout.tab} onTab={(id) => setLayout((l) => ({ ...l, tab: id }))} dots={panelDots} render={renderPanel} onMove={movePanelTo} onResize={(w) => setLayout((l) => setSize(l, 'sidebarW', w))} />
         )}
       </div>
 

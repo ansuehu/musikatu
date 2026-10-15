@@ -50,6 +50,17 @@ export interface Layout {
   toolsTab: PanelId | null
   toolsOpen: boolean
   toolsRect: Rect | null
+  /** Sidebar width and bottom-strip height in px (null: default). */
+  sidebarW: number | null
+  bottomH: number | null
+  /** Bottom-strip widths the user dragged, per panel (missing: the panel's default). */
+  widths: Partial<Record<PanelId, number>>
+}
+
+export const SIZE_LIMITS = {
+  sidebarW: { def: 330, min: 260, max: 760 },
+  bottomH: { def: 226, min: 140, max: 640 },
+  cellW: { min: 160, max: 1200 },
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -71,6 +82,26 @@ export const DEFAULT_LAYOUT: Layout = {
   toolsTab: 'practice',
   toolsOpen: false,
   toolsRect: null,
+  sidebarW: null,
+  bottomH: null,
+  widths: {},
+}
+
+const clamp = (v: number, min: number, max: number) => Math.round(Math.max(min, Math.min(max, v)))
+const sizeOr = (v: unknown, lim: { min: number; max: number }) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lim.min, lim.max) : null)
+
+/** Width of panel `id` in the bottom strip: what the user set, else its default ('flex' fills the rest). */
+export const cellWidth = (l: Layout, id: PanelId): number | 'flex' => l.widths[id] ?? metaOf(id).bottomWidth
+
+export function setSize(l: Layout, what: 'sidebarW' | 'bottomH', v: number | null): Layout {
+  return { ...l, [what]: v === null ? null : sizeOr(v, SIZE_LIMITS[what]) }
+}
+
+export function setCellWidth(l: Layout, id: PanelId, w: number | null): Layout {
+  const widths = { ...l.widths }
+  if (w === null) delete widths[id]
+  else widths[id] = clamp(w, SIZE_LIMITS.cellW.min, SIZE_LIMITS.cellW.max)
+  return { ...l, widths }
 }
 
 export const metaOf = (id: PanelId) => PANELS.find((p) => p.id === id)!
@@ -104,7 +135,20 @@ function normalise(saved: Partial<Layout>): Layout {
     const p = saved.place?.[id]
     if (p === 'sidebar' || p === 'bottom' || p === 'tools') place[id] = p
   }
-  const l: Layout = { ...DEFAULT_LAYOUT, ...saved, place, order }
+  const widths: Partial<Record<PanelId, number>> = {}
+  for (const id of known) {
+    const w = sizeOr(saved.widths?.[id], SIZE_LIMITS.cellW)
+    if (w !== null) widths[id] = w
+  }
+  const l: Layout = {
+    ...DEFAULT_LAYOUT,
+    ...saved,
+    place,
+    order,
+    sidebarW: sizeOr(saved.sidebarW, SIZE_LIMITS.sidebarW),
+    bottomH: sizeOr(saved.bottomH, SIZE_LIMITS.bottomH),
+    widths,
+  }
   return fixTabs(l)
 }
 

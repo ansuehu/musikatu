@@ -27,7 +27,7 @@ A desktop workbench for transcribing music by ear: slow it down, loop it, see wh
 
 ## Layout
 
-Every tool is a panel you can put where you like: in the **sidebar**, in the **bottom strip**, or in the **Tools window** (⚙ Tools in the top bar), a movable, resizable window with one tab per panel. Drag a tab, or the grip at the top of a bottom-strip panel, and drop it where you want it; a line shows where it will land. In the Tools window, **Show in main window** sends the open panel to the sidebar or the bottom strip. The layout is remembered, and **Reset layout** restores the defaults.
+Every tool is a panel you can put where you like: in the **sidebar**, in the **bottom strip**, or in the **Tools window** (⚙ Tools in the top bar), a movable, resizable window with one tab per panel. Drag a tab, or the grip at the top of a bottom-strip panel, and drop it where you want it; a line shows where it will land. Drag the edge of the sidebar, the top of the bottom strip or the side of a bottom-strip panel to resize it (double-click the edge to reset). In the Tools window, **Show in main window** sends the open panel to the sidebar or the bottom strip. The layout is remembered, and **Reset layout** restores the defaults.
 
 ## Run
 

@@ -30,7 +30,17 @@ export interface ChordTrackOptions {
   a4?: number
   /** Score a new chord must gain before the decoder switches to it. */
   switchPenalty?: number
+  /**
+   * Beat positions (samples of `mono`), ascending. When given, the chart is decoded one chord per beat and
+   * changes land on beats, preferably on downbeats.
+   */
+  beats?: number[]
+  /** Indices into `beats` that start a bar. */
+  downbeats?: number[]
 }
+
+/** Cost of changing chord on a beat, by where the beat falls in the bar (tuned on the evaluation set, see scripts/chord-eval). */
+export const BEAT_SWITCH_PENALTY = { downbeat: 0.18, midBar: 0.33, other: 0.65, unknownBar: 0.38 }
 
 interface Frame {
   chroma: Float32Array
@@ -122,6 +132,11 @@ export function analyzeChords(
   const penalty = options.switchPenalty ?? 0.9
   const frames = analyzeFrames(mono, sampleRate, hopSeconds, options.a4 ?? 440, (f) => onProgress?.(f * 0.9))
   if (frames.length === 0) return []
+  if (options.beats && options.beats.length >= 4) {
+    const segs = decodeOnBeats(frames, hop, mono.length, options.vocabulary, options.beats, options.downbeats ?? [])
+    onProgress?.(1)
+    return segs
+  }
   const chroma = smooth(frames, 2)
   const tpl = templates(options.vocabulary)
   const S = tpl.length + 1 // last state = no chord
@@ -198,6 +213,134 @@ export function analyzeChords(
   }
   onProgress?.(1)
   return mergeShort(segments, Math.round(0.8 * sampleRate))
+}
+
+/**
+ * Slots between consecutive beats; before the first and after the last beat the median beat spacing is
+ * continued, so intros and endings are charted at the same resolution. Returns slot starts plus the end.
+ */
+function beatSlots(beats: number[], length: number): number[] {
+  const inside = beats.filter((b) => b > 0 && b < length)
+  const gaps = inside.slice(1).map((b, i) => b - inside[i]).sort((a, b) => a - b)
+  const spacing = Math.max(1, gaps[gaps.length >> 1] ?? length)
+  const head: number[] = []
+  for (let b = inside[0] - spacing; b > spacing / 2; b -= spacing) head.unshift(Math.round(b))
+  const tail: number[] = []
+  for (let b = inside[inside.length - 1] + spacing; b < length - spacing / 2; b += spacing) tail.push(Math.round(b))
+  return [0, ...head, ...inside, ...tail, length]
+}
+
+/** One chord per beat: chroma pooled over each beat, Viterbi with switch costs that depend on the position in the bar. */
+function decodeOnBeats(frames: Frame[], hop: number, length: number, vocabulary: Vocabulary, beats: number[], downbeats: number[]): ChordSegment[] {
+  const edges = beatSlots(beats, length)
+  const B = edges.length - 1
+  // position in the bar of each slot (0 = downbeat), or -1 when the bar isn't known
+  const isDown = new Set(downbeats.map((i) => beats[i]))
+  const barPos = new Int32Array(B).fill(-1)
+  if (isDown.size) {
+    let pos = -1
+    for (let k = 0; k < B; k++) {
+      if (isDown.has(edges[k])) pos = 0
+      else if (pos >= 0) pos++
+      barPos[k] = pos
+    }
+  }
+
+  // pool frame chroma per slot (louder frames count more); bass by level-weighted vote
+  const chroma: Float32Array[] = []
+  const level = new Float32Array(B)
+  const bassOf: (number | null)[] = []
+  for (let k = 0; k < B; k++) {
+    const a = edges[k]
+    const b = edges[k + 1]
+    let f0 = Math.max(0, Math.ceil((a - hop / 2) / hop))
+    let f1 = Math.min(frames.length - 1, Math.floor((b - hop / 2 - 1) / hop))
+    if (f1 < f0) f0 = f1 = Math.min(frames.length - 1, Math.max(0, Math.round((a + b) / 2 / hop - 0.5)))
+    const c = new Float32Array(12)
+    const votes = new Float32Array(12)
+    for (let f = f0; f <= f1; f++) {
+      const fr = frames[f]
+      level[k] = Math.max(level[k], fr.level)
+      for (let pc = 0; pc < 12; pc++) c[pc] += fr.level * fr.chroma[pc]
+      if (fr.bass !== null) votes[fr.bass] += fr.level
+    }
+    let sum = 0
+    for (let pc = 0; pc < 12; pc++) sum += c[pc]
+    if (sum > 0) for (let pc = 0; pc < 12; pc++) c[pc] /= sum
+    chroma.push(c)
+    let bass: number | null = null
+    for (let pc = 0; pc < 12; pc++) if (votes[pc] > 0 && (bass === null || votes[pc] > votes[bass])) bass = pc
+    bassOf.push(bass)
+  }
+
+  const tpl = templates(vocabulary)
+  const S = tpl.length + 1
+  const NC = S - 1
+  const emits = new Float32Array(B * S)
+  const back = new Int32Array(B * S)
+  let dp = new Float32Array(S)
+  let next = new Float32Array(S)
+  const P = BEAT_SWITCH_PENALTY
+  for (let k = 0; k < B; k++) {
+    const silent = level[k] < SILENCE
+    const emit = emits.subarray(k * S, (k + 1) * S)
+    for (let s = 0; s < NC; s++) emit[s] = silent ? -1 : score(chroma[k], tpl[s], bassOf[k])
+    emit[NC] = silent ? 1 : NO_CHORD_SCORE
+    if (k === 0) {
+      dp.set(emit)
+      continue
+    }
+    const penalty = barPos[k] < 0 ? P.unknownBar : barPos[k] === 0 ? P.downbeat : barPos[k] === 2 ? P.midBar : P.other
+    let best = 0
+    for (let s = 1; s < S; s++) if (dp[s] > dp[best]) best = s
+    for (let s = 0; s < S; s++) {
+      const jump = dp[best] - penalty
+      if (dp[s] >= jump) {
+        next[s] = dp[s] + emit[s]
+        back[k * S + s] = s
+      } else {
+        next[s] = jump + emit[s]
+        back[k * S + s] = best
+      }
+    }
+    ;[dp, next] = [next, dp]
+  }
+  const path = new Int32Array(B)
+  let st = 0
+  for (let s = 1; s < S; s++) if (dp[s] > dp[st]) st = s
+  for (let k = B - 1; k >= 0; k--) {
+    path[k] = st
+    st = back[k * S + st]
+  }
+
+  const segments: ChordSegment[] = []
+  for (let k0 = 0; k0 < B; ) {
+    let k1 = k0
+    while (k1 + 1 < B && path[k1 + 1] === path[k0]) k1++
+    const state = path[k0]
+    let chord: Chord | null = null
+    let conf = 0
+    if (state !== NC) {
+      const t = tpl[state]
+      const votes = new Float32Array(12)
+      let total = 0
+      for (let k = k0; k <= k1; k++) {
+        conf += emits[k * S + state]
+        const b = bassOf[k]
+        if (b !== null) {
+          votes[b] += level[k]
+          total += level[k]
+        }
+      }
+      conf = Math.max(0, Math.min(1, conf / (k1 - k0 + 1)))
+      let bass: number | null = null
+      for (let pc = 0; pc < 12; pc++) if (pc !== t.root && t.tones.includes(pc) && total > 0 && votes[pc] / total > 0.5) bass = pc
+      chord = { root: t.root, suffix: t.suffix, bass }
+    }
+    segments.push({ start: edges[k0], end: edges[k1 + 1], chord, confidence: conf })
+    k0 = k1 + 1
+  }
+  return segments
 }
 
 const same = (a: Chord | null, b: Chord | null) =>

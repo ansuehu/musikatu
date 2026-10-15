@@ -33,7 +33,6 @@ import type { MetronomePrefs } from './components/MetronomeEditor'
 import { DEFAULT_METRONOME } from './dsp/Metronome'
 import { useBeatGrid } from './rhythm/useBeatGrid'
 import { barRange, positionInfo, snapToBeat, type BeatGrid } from './rhythm/grid'
-import { snapSegmentsToBeats } from './rhythm/sheet'
 import { PianoRoll, type NoteKey } from './components/PianoRoll'
 import { NotesTab, type SynthPrefs } from './components/NotesTab'
 import { useTranscription } from './transcription/useTranscription'
@@ -654,18 +653,7 @@ export default function App() {
   const showRoll = showPianoRoll && noteTracks.some((t) => t.visible && t.notes.length)
 
   // ---- whole-song chord chart ----
-  // Chord changes land on beats once both the chart and the grid exist (unless the user has edited the chart).
-  const setChordTrackSnapped = useCallback(
-    (t: ChordTrack) => {
-      const g = gridRef.current
-      setChordTrack(g && !t.edited ? { ...t, segments: snapSegmentsToBeats(t.segments, g.beats, Math.round(sampleRate * 0.25)), snapped: true } : t)
-    },
-    [sampleRate],
-  )
-  useEffect(() => {
-    if (beatGrid && chordTrack && !chordTrack.edited && !chordTrack.snapped) setChordTrackSnapped(chordTrack)
-  }, [beatGrid, chordTrack, setChordTrackSnapped])
-  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrackSnapped, a4 })
+  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrack, a4, grid: beatGrid })
   // Names follow what you hear: the pitch shift (rounded) plus the instrument transposition.
   const pitchShift = Math.round(semitones + cents / 100)
   const chordLabel = useCallback(

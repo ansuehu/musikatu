@@ -85,3 +85,38 @@ test('typed chord names parse, including aliases and slash basses', () => {
   assert.equal(parseChordName('N.C.'), null)
   assert.equal(parseChordName('hello'), undefined)
 })
+
+test('with beats, chords change exactly on the beat where the new chord takes over', () => {
+  const C = [48, 55, 60, 64, 67]
+  const Am = [45, 52, 57, 60, 64]
+  const F = [41, 48, 53, 57, 60]
+  const G = [43, 50, 55, 59, 62]
+  // 2 s per chord, but every change comes 0.15 s early (strummed ahead of the bar)
+  const early = Math.round(0.15 * SR)
+  const audio = progression([C, Am, F, G, C], 2)
+  const shifted = new Float32Array(audio.length)
+  shifted.set(audio.subarray(early))
+  // beats every 0.5 s from 0.25 s; a bar is 4 beats with downbeats on 0.25, 2.25, …
+  const beats: number[] = []
+  for (let t = 0.25; t < 10; t += 0.5) beats.push(Math.round(t * SR))
+  const downbeats = beats.map((_, i) => i).filter((i) => i % 4 === 0)
+  const segs = analyzeChords(shifted, SR, { vocabulary: 'standard', beats, downbeats })
+  assert.deepEqual(names(segs), ['C', 'Am', 'F', 'G', 'C'])
+  for (const s of segs.slice(1)) assert.ok(beats.includes(s.start), `change at ${(s.start / SR).toFixed(3)} s is on a beat`)
+  // each change (at 1.85 s, 3.85 s, …) starts on the beat whose span the new chord mostly fills
+  assert.deepEqual(
+    segs.slice(1).map((s) => +(s.start / SR).toFixed(2)),
+    [1.75, 3.75, 5.75, 7.75],
+  )
+  assert.equal(segs[segs.length - 1].end, shifted.length)
+})
+
+test('beats that start late still chart the intro', () => {
+  const Am = [45, 52, 57, 60, 64]
+  const audio = progression([Am, Am, Am], 2)
+  const beats: number[] = []
+  for (let t = 3; t < 6; t += 0.5) beats.push(Math.round(t * SR))
+  const segs = analyzeChords(audio, SR, { vocabulary: 'standard', beats })
+  assert.deepEqual(names(segs), ['Am'])
+  assert.equal(segs[0].start, 0)
+})

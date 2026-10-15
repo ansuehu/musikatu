@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { doubleTempo, halfTempo, lastBar, setBarOneAt, shiftDownbeats, tempoBpm, withMeter, type BeatGrid } from '../rhythm/grid'
 import type { GridStatus } from '../rhythm/useBeatGrid'
 import { Btn } from './Controls'
-import { MetronomeEditor, type MetronomePrefs } from './MetronomeEditor'
 
 interface Props {
   grid: BeatGrid | null
@@ -13,9 +12,6 @@ interface Props {
   getPosition: () => number
   onRerun: () => void
   onGrid: (g: BeatGrid) => void
-  metronome: MetronomePrefs
-  onMetronome: (m: MetronomePrefs) => void
-  onPreviewClick: (accent: boolean) => void
   snap: boolean
   onSnap: (on: boolean) => void
   onLoopBars: (from: number, to: number) => void
@@ -88,8 +84,6 @@ export function GridPanel(p: Props) {
               Bar 1 here
             </Btn>
           </div>
-
-          <MetronomeEditor value={p.metronome} onChange={p.onMetronome} onPreview={p.onPreviewClick} hasGrid={!!g} />
 
           <label className="check small-text">
             <input type="checkbox" checked={p.snap} onChange={(e) => p.onSnap(e.target.checked)} />

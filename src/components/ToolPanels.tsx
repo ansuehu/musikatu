@@ -8,11 +8,8 @@ import { markerColors } from '../waveform/draw'
 import type { Selection } from '../types'
 import { Btn, Slider } from './Controls'
 
-export type SidebarTab = 'stems' | 'chords' | 'notes' | 'markers' | 'loops' | 'eq' | 'mix'
-
-interface Props {
-  tab: SidebarTab
-  onTab: (t: SidebarTab) => void
+/** Shared props of the tool panels defined here (Beats, Practice, EQ, Mix). */
+export interface ToolProps {
   sampleRate: number
   disabled: boolean
   // markers
@@ -42,54 +39,11 @@ interface Props {
   channelMode: ChannelMode
   onChannelMode: (m: ChannelMode) => void
   channels: number
-  stemsPanel: ReactNode
-  chordsPanel: ReactNode
   gridPanel: ReactNode
-  notesPanel: ReactNode
   practicePanel: ReactNode
-  stemsActive: boolean
 }
 
-const TABS: { id: SidebarTab; label: string }[] = [
-  { id: 'stems', label: 'Stems' },
-  { id: 'chords', label: 'Chords' },
-  { id: 'notes', label: 'Notes' },
-  { id: 'markers', label: 'Beats' },
-  { id: 'loops', label: 'Practice' },
-  { id: 'eq', label: 'EQ' },
-  { id: 'mix', label: 'Mix' },
-]
-
-export function Sidebar(p: Props) {
-  return (
-    <aside className="sidebar">
-      <nav className="tabs" role="tablist">
-        {TABS.map((t) => (
-          <Btn
-            key={t.id}
-            role="tab"
-            aria-selected={p.tab === t.id}
-            className={`tab ${p.tab === t.id ? 'on' : ''} ${t.id === 'eq' && isEqActive(p.eq) ? 'dot' : ''} ${t.id === 'mix' && p.channelMode !== 'stereo' ? 'dot' : ''} ${t.id === 'stems' && p.stemsActive ? 'dot' : ''}`}
-            onClick={() => p.onTab(t.id)}
-          >
-            {t.label}
-          </Btn>
-        ))}
-      </nav>
-      <div className="tab-body">
-        {p.tab === 'stems' && p.stemsPanel}
-        {p.tab === 'chords' && p.chordsPanel}
-        {p.tab === 'notes' && p.notesPanel}
-        {p.tab === 'markers' && <MarkersTab {...p} />}
-        {p.tab === 'loops' && <LoopsTab {...p} />}
-        {p.tab === 'eq' && <EqTab {...p} />}
-        {p.tab === 'mix' && <MixTab {...p} />}
-      </div>
-    </aside>
-  )
-}
-
-function isEqActive(eq: EqState): boolean {
+export function isEqActive(eq: EqState): boolean {
   return eq.enabled && (eq.gains.some((g) => g !== 0) || eq.highpass.on || eq.lowpass.on)
 }
 
@@ -120,7 +74,7 @@ function NameInput({ value, onCommit, inputRef, list }: { value: string; onCommi
   )
 }
 
-function MarkersTab(p: Props) {
+export function MarkersTab(p: ToolProps) {
   const sorted = useMemo(() => [...p.markers].sort((a, b) => a.pos - b.pos), [p.markers])
   const bars = useMemo(() => measureNumbers(p.markers), [p.markers])
   const inputs = useRef(new Map<string, HTMLInputElement>())
@@ -222,7 +176,7 @@ function MarkersTab(p: Props) {
   )
 }
 
-function LoopsTab(p: Props) {
+export function LoopsTab(p: ToolProps) {
   const sr = p.sampleRate
   return (
     <div className="loops-tab">
@@ -268,7 +222,7 @@ function LoopsTab(p: Props) {
 const toSlider = (f: number) => Math.round((Math.log(f / PASS_MIN_HZ) / Math.log(PASS_MAX_HZ / PASS_MIN_HZ)) * 1000)
 const fromSlider = (v: number) => Math.round(PASS_MIN_HZ * (PASS_MAX_HZ / PASS_MIN_HZ) ** (v / 1000))
 
-function EqTab(p: Props) {
+export function EqTab(p: ToolProps) {
   const { eq, onEq } = p
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -365,7 +319,7 @@ function EqTab(p: Props) {
   )
 }
 
-function MixTab(p: Props) {
+export function MixTab(p: ToolProps) {
   return (
     <div className="mix-tab">
       {p.channels < 2 && <p className="warning">This file is mono — channel modes need a stereo recording.</p>}

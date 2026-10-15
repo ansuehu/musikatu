@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Btn, Slider } from './Controls'
 import { FolderIcon, VolumeIcon } from './Icons'
 import { formatTime } from '../waveform/draw'
@@ -21,6 +22,8 @@ interface Props {
   spelling: Spelling
   onSpelling: (s: Spelling) => void
   onShortcuts: () => void
+  /** Floating-panel buttons and the Panels menu. */
+  tools?: ReactNode
   sidebarOpen: boolean
   onSidebar: (open: boolean) => void
   disabled: boolean
@@ -84,6 +87,7 @@ export function TopBar(p: Props) {
         <Slider min={0} max={1.5} step={0.01} value={p.volume} onChange={(e) => p.onVolume(+e.target.value)} />
         <span className="value">{Math.round(p.volume * 100)}%</span>
       </label>
+      {p.tools}
       <Btn onClick={p.onShortcuts} title="Keyboard, global hotkey and MIDI pedal shortcuts (Ctrl+,)">
         ⌨
       </Btn>

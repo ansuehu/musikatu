@@ -1,32 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AudioEngine, Timbre } from '../audio/AudioEngine'
-import { SpectrumAnalyzer } from '../analysis/spectrum'
-import { chordName, estimateNotes, HIGHEST_KEY, LOWEST_KEY, midiToFreq, noteName, type NoteEstimate, type Spelling } from '../analysis/notes'
-import type { ChannelMode } from '../dsp/ChannelMixer'
-import type { Peaks } from '../waveform/peaks'
+import { chordName, HIGHEST_KEY, LOWEST_KEY, midiToFreq, noteName, type NoteEstimate, type Spelling } from '../analysis/notes'
+import { hoverKey, liveAnalysis, useHoverKey, useLiveEstimate } from '../analysis/live'
 import { Btn } from './Controls'
-import { GuitarPanel } from './GuitarPanel'
 
 interface Props {
   engine: AudioEngine | null
-  peaks: Peaks | null
-  getPosition: () => number
-  pitchRatio: number
-  channelMode: ChannelMode
-  /** EQ magnitude per analyser bin, or null when flat. */
-  eqWeights: Float32Array | null
-  /** When stems are playing: the audible sources and their gains, so analysis follows what you hear. */
-  layers: { id: string; channels: Float32Array[]; gain: number }[] | null
   transpose: number
   spelling: Spelling
   a4: number
-  onA4: (hz: number) => void
   timbre: Timbre
-  onTimbre: (t: Timbre) => void
-  showGuitar: boolean
-  onShowGuitar: (on: boolean) => void
-  capo: number
-  onCapo: (c: number) => void
 }
 
 const KEYS_H = 62
@@ -35,7 +18,6 @@ const DB_TOP = -12
 const BLACK = new Set([1, 3, 6, 8, 10])
 const isBlack = (m: number) => BLACK.has(m % 12)
 const WHITE_KEYS = 52
-const ANALYSIS_INTERVAL_MS = 33
 
 interface KeyGeom {
   x0: Float64Array
@@ -80,29 +62,19 @@ function pixelMidi(geom: KeyGeom, W: number): Float64Array {
   return out
 }
 
-/** Real-time spectrum aligned to an 88-key reference piano, with note / chord estimation. */
-export function AnalysisPanel(props: Props) {
+/** On-screen 88-key piano with the live spectrum above it; click keys for reference tones. */
+export function KeyboardPanel(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const latest = useRef(props)
   latest.current = props
-  const [estimate, setEstimate] = useState<NoteEstimate | null>(null)
-  const [hoverKey, setHoverKey] = useState<number | null>(null)
   const pressed = useRef<{ midi: number; release: () => void } | null>(null)
   const geomRef = useRef<{ W: number; dpr: number; geom: KeyGeom; px: Float64Array } | null>(null)
-  const hoverRef = useRef<number | null>(null)
-  hoverRef.current = hoverKey
 
   useEffect(() => {
     const canvas = canvasRef.current!
     const g = canvas.getContext('2d')!
-    const analyzer = new SpectrumAnalyzer(16384)
     let raf = 0
-    let lastAnalysis = 0
-    let analysisKey = ''
-    let est: NoteEstimate | null = null
-    let mags: Float32Array | null = null
     let drawnKey = ''
-
     const ro = new ResizeObserver(() => {
       const dpr = window.devicePixelRatio || 1
       canvas.width = Math.round(canvas.clientWidth * dpr)
@@ -110,7 +82,7 @@ export function AnalysisPanel(props: Props) {
     })
     ro.observe(canvas)
 
-    const frame = (now: number) => {
+    const frame = () => {
       raf = requestAnimationFrame(frame)
       const p = latest.current
       const W = canvas.width
@@ -122,61 +94,20 @@ export function AnalysisPanel(props: Props) {
         const geom = keyGeometry(W)
         geo = geomRef.current = { W, dpr, geom, px: pixelMidi(geom, W) }
       }
-
-      // --- analysis (throttled, and only when the inputs changed) ---
-      const sr = p.engine?.sampleRate ?? 48000
-      const binHz = (sr / analyzer.size) * p.pitchRatio
-      if (p.peaks && now - lastAnalysis >= ANALYSIS_INTERVAL_MS) {
-        const pos = p.getPosition()
-        const key = `${p.peaks.id}|${Math.round(pos / 256)}|${p.channelMode}|${p.pitchRatio}|${p.a4}|${weightsId(p.eqWeights)}|${p.layers?.map((l) => `${l.id}:${l.gain.toFixed(3)}`).join(',') ?? 'mix'}`
-        if (key !== analysisKey) {
-          analysisKey = key
-          lastAnalysis = now
-          if (p.layers) {
-            // Mix just the analysis window from the audible stems.
-            const N = analyzer.size
-            const start = Math.round(pos) - N / 2
-            const L = new Float32Array(N)
-            const R = new Float32Array(N)
-            for (const { channels, gain } of p.layers) {
-              const cl = channels[0]
-              const cr = channels[1] ?? cl
-              const a = Math.max(0, -start)
-              const b = Math.min(N, cl.length - start)
-              for (let i = a; i < b; i++) {
-                L[i] += gain * cl[start + i]
-                R[i] += gain * cr[start + i]
-              }
-            }
-            mags = analyzer.analyze([L, R], N / 2, p.channelMode, sr, p.eqWeights)
-          } else {
-            mags = analyzer.analyze(p.peaks.channels, pos, p.channelMode, sr, p.eqWeights)
-          }
-          est = estimateNotes(mags, binHz, p.a4)
-          setEstimate(est)
-        }
-      } else if (!p.peaks && mags) {
-        mags = null
-        est = null
-        setEstimate(null)
-      }
-
+      const { mags, est, binHz, version } = liveAnalysis.get()
+      const hover = hoverKey.get()
       const pk = pressed.current?.midi ?? -1
-      const dk = `${analysisKey}|${W}|${H}|${pk}|${hoverRef.current}|${p.transpose}|${p.spelling}`
+      const dk = `${version}|${W}|${H}|${pk}|${hover}|${p.transpose}|${p.spelling}|${p.a4}`
       if (dk === drawnKey) return
       drawnKey = dk
 
-      // --- drawing ---
       const keysH = Math.round(KEYS_H * dpr)
       const specH = H - keysH
       const { geom, px } = geo
       g.fillStyle = '#0b0d11'
       g.fillRect(0, 0, W, specH)
-
-      // octave guides at every C
       g.fillStyle = '#1b2030'
       for (let m = 24; m <= HIGHEST_KEY; m += 12) g.fillRect(Math.round(geom.x0[m]), 0, 1, specH)
-      // dB guides
       g.fillStyle = '#161a24'
       for (let db = -80; db <= DB_TOP; db += 20) g.fillRect(0, Math.round(dbToY(db, specH)), W, 1)
 
@@ -204,17 +135,11 @@ export function AnalysisPanel(props: Props) {
         g.fillStyle = grad
         g.fill()
       }
-
-      // detected notes: markers above the keys
       if (est) {
         g.fillStyle = '#ffb547'
-        for (const n of est.notes) {
-          const c = geom.center[n]
-          g.fillRect(Math.round(c - 2 * dpr), specH - 5 * dpr, 4 * dpr, 5 * dpr)
-        }
+        for (const n of est.notes) g.fillRect(Math.round(geom.center[n] - 2 * dpr), specH - 5 * dpr, 4 * dpr, 5 * dpr)
       }
-
-      drawKeys(g, geom, specH, keysH, dpr, est, pk, hoverRef.current, p.transpose, p.spelling)
+      drawKeys(g, geom, specH, keysH, dpr, est, pk, hover, p.transpose, p.spelling)
     }
     raf = requestAnimationFrame(frame)
     return () => {
@@ -252,13 +177,8 @@ export function AnalysisPanel(props: Props) {
     pressed.current = { midi: m, release: p.engine.playTone(midiToFreq(m, p.a4), p.timbre) }
   }
 
-  const { transpose, spelling, a4 } = props
-  const peak = estimate?.peak
-  const hoverText = hoverKey !== null ? `${noteName(hoverKey, transpose, spelling)} · ${midiToFreq(hoverKey, a4).toFixed(1)} Hz` : ''
-
   return (
-    <section className={`analysis ${props.showGuitar ? 'with-guitar' : ''}`}>
-      <div className="analysis-canvas-wrap">
+    <div className="keyboard-panel">
       <canvas
         ref={canvasRef}
         className="analysis-canvas"
@@ -269,96 +189,81 @@ export function AnalysisPanel(props: Props) {
         }}
         onPointerMove={(e) => {
           const m = keyAt(e)
-          setHoverKey(m)
+          hoverKey.set(m)
           if (pressed.current) press(m)
         }}
         onPointerUp={() => press(null)}
         onPointerCancel={() => press(null)}
-        onPointerLeave={() => !pressed.current && setHoverKey(null)}
+        onPointerLeave={() => !pressed.current && hoverKey.set(null)}
       />
+    </div>
+  )
+}
+
+interface GuessProps {
+  transpose: number
+  spelling: Spelling
+  a4: number
+  onA4: (hz: number) => void
+  timbre: Timbre
+  onTimbre: (t: Timbre) => void
+}
+
+/** The chord and notes sounding at the playhead, the strongest pitch with its tuning, and the reference-tone settings. */
+export function ChordGuessPanel({ transpose, spelling, a4, onA4, timbre, onTimbre }: GuessProps) {
+  const estimate = useLiveEstimate()
+  const hover = useHoverKey()
+  const peak = estimate?.peak
+  const hoverText = hover !== null ? `${noteName(hover, transpose, spelling)} · ${midiToFreq(hover, a4).toFixed(1)} Hz` : ''
+  return (
+    <div className="analysis-info">
+      <div className="chord">{estimate?.chord ? chordName(estimate.chord, transpose, spelling) : '—'}</div>
+      <div className="notes">{estimate && estimate.notes.length > 0 ? estimate.notes.map((n) => noteName(n, transpose, spelling)).join('  ') : 'No clear notes'}</div>
+      <div className="peak" title="Strongest frequency and its deviation from equal temperament">
+        {peak ? (
+          <>
+            Peak {noteName(peak.midi, transpose, spelling)}{' '}
+            <span className={Math.abs(peak.cents) <= 5 ? 'in-tune' : 'off-tune'}>
+              {peak.cents >= 0 ? '+' : ''}
+              {peak.cents.toFixed(0)}¢
+            </span>{' '}
+            · {peak.freq.toFixed(1)} Hz
+          </>
+        ) : (
+          '\u00a0'
+        )}
       </div>
-      <div className="analysis-info">
-        <div className="info-head">
-          <span className="label">Chord guess</span>
-          <Btn
-            className={`small ${props.showGuitar ? 'on' : ''}`}
-            onClick={() => props.onShowGuitar(!props.showGuitar)}
-            title="Show the chord as a guitar diagram"
-            aria-pressed={props.showGuitar}
-          >
-            Guitar
-          </Btn>
-        </div>
-        <div className="chord">{estimate?.chord ? chordName(estimate.chord, transpose, spelling) : '—'}</div>
-        <div className="notes">
-          {estimate && estimate.notes.length > 0 ? estimate.notes.map((n) => noteName(n, transpose, spelling)).join('  ') : 'No clear notes'}
-        </div>
-        <div className="peak" title="Strongest frequency and its deviation from equal temperament">
-          {peak ? (
-            <>
-              Peak {noteName(peak.midi, transpose, spelling)}{' '}
-              <span className={Math.abs(peak.cents) <= 5 ? 'in-tune' : 'off-tune'}>
-                {peak.cents >= 0 ? '+' : ''}
-                {peak.cents.toFixed(0)}¢
-              </span>{' '}
-              · {peak.freq.toFixed(1)} Hz
-            </>
-          ) : (
-            ' '
-          )}
-        </div>
-        <div className="hover">{hoverText || 'Click keys for reference tones'}</div>
-        <div className="ref-row">
-          <label title="Tuning reference for reference tones, key positions and note detection">
-            A4
-            <input
-              type="number"
-              min={400}
-              max={480}
-              step={0.5}
-              value={a4}
-              onChange={(e) => {
-                const v = +e.target.value
-                if (v >= 400 && v <= 480) props.onA4(v)
-              }}
-            />
-            Hz
-          </label>
-          <Btn className={`small ${props.timbre === 'piano' ? 'on' : ''}`} onClick={() => props.onTimbre('piano')}>
-            Piano
-          </Btn>
-          <Btn className={`small ${props.timbre === 'sine' ? 'on' : ''}`} onClick={() => props.onTimbre('sine')}>
-            Sine
-          </Btn>
-        </div>
+      <div className="hover">{hoverText || 'Click keys for reference tones'}</div>
+      <div className="ref-row">
+        <label title="Tuning reference for reference tones, key positions and note detection">
+          A4
+          <input
+            type="number"
+            min={400}
+            max={480}
+            step={0.5}
+            value={a4}
+            onChange={(e) => {
+              const v = +e.target.value
+              if (v >= 400 && v <= 480) onA4(v)
+            }}
+          />
+          Hz
+        </label>
+        <Btn className={`small ${timbre === 'piano' ? 'on' : ''}`} onClick={() => onTimbre('piano')}>
+          Piano
+        </Btn>
+        <Btn className={`small ${timbre === 'sine' ? 'on' : ''}`} onClick={() => onTimbre('sine')}>
+          Sine
+        </Btn>
       </div>
-      {props.showGuitar && (
-        <GuitarPanel
-          chord={estimate?.chord ?? null}
-          engine={props.engine}
-          spelling={spelling}
-          transpose={transpose}
-          capo={props.capo}
-          onCapo={props.onCapo}
-          a4={a4}
-        />
-      )}
-    </section>
+    </div>
   )
 }
 
 function dbToY(db: number, h: number): number {
   const t = (Math.max(DB_FLOOR, Math.min(DB_TOP, db)) - DB_FLOOR) / (DB_TOP - DB_FLOOR)
   return h - t * (h - 2)
-}
-
-const weightIds = new WeakMap<object, number>()
-let nextWeightId = 1
-function weightsId(w: Float32Array | null): number {
-  if (!w) return 0
-  let id = weightIds.get(w)
-  if (!id) weightIds.set(w, (id = nextWeightId++))
-  return id
 }
 
 function drawKeys(

@@ -3,6 +3,7 @@ import type { AudioEngine } from '../audio/AudioEngine'
 import { STANDARD_TUNING, chordVoicings } from '../analysis/guitar'
 import { chordName, midiToFreq, pitchClassName, type ChordGuess, type Spelling } from '../analysis/notes'
 import { ChordDiagram } from './ChordDiagram'
+import { useLiveEstimate } from '../analysis/live'
 import { Btn } from './Controls'
 
 interface Props {
@@ -97,4 +98,10 @@ export function GuitarPanel({ chord, engine, spelling, transpose, capo, onCapo, 
       </div>
     </div>
   )
+}
+
+/** Guitar panel fed by the live analysis (works wherever the layout places it). */
+export function LiveGuitarPanel(props: Omit<Props, 'chord'>) {
+  const est = useLiveEstimate()
+  return <GuitarPanel {...props} chord={est?.chord ?? null} />
 }

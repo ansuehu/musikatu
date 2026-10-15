@@ -25,6 +25,10 @@ A desktop workbench for transcribing music by ear: slow it down, loop it, see wh
   - markers and saved loops;
   - rebindable keys, global hotkeys and MIDI pedals.
 
+## Layout
+
+Every tool is a panel you can put where you like: in the **sidebar**, in the **bottom strip**, as a **floating window**, or hidden. Use **Panels ▾** in the top bar, or the ⋯ menu on each panel. By default the Metronome, EQ and Mix open as floating windows from their buttons in the top bar. Windows can be moved and resized, and the layout is remembered.
+
 ## Run
 
 ```sh

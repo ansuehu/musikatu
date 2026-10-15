@@ -11,6 +11,8 @@ interface Props {
   onPreview: (accent: boolean) => void
   /** False until the song has a beat grid (the editor still works, the toggle doesn't). */
   hasGrid: boolean
+  /** In its own panel/window: sound settings always shown, no ⚙ toggle. */
+  standalone?: boolean
 }
 
 const MIN_HZ = 200
@@ -89,8 +91,9 @@ function SoundRow({ title, hint, sound, onChange, onPreview }: { title: string; 
 }
 
 /** Metronome on/off plus full sound editing: level, waveform, and per-click volume, pitch and length. */
-export function MetronomeEditor({ value: m, onChange, onPreview, hasGrid }: Props) {
-  const [open, setOpen] = useState(false)
+export function MetronomeEditor({ value: m, onChange, onPreview, hasGrid, standalone }: Props) {
+  const [expanded, setOpen] = useState(false)
+  const open = standalone || expanded
   const set = (patch: Partial<MetronomeSettings>) => onChange({ ...m, ...patch })
   return (
     <div className="metronome-editor">
@@ -100,9 +103,11 @@ export function MetronomeEditor({ value: m, onChange, onPreview, hasGrid }: Prop
         </Btn>
         <Slider min={0} max={2} step={0.01} value={m.master} onChange={(e) => set({ master: +e.target.value })} aria-label="Metronome volume" title="Metronome volume" />
         <span className="value">{Math.round(m.master * 100)}%</span>
-        <Btn className={`small icon ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title="Edit the metronome sounds" aria-expanded={open}>
-          ⚙
-        </Btn>
+        {!standalone && (
+          <Btn className={`small icon ${open ? 'on' : ''}`} onClick={() => setOpen(!open)} title="Edit the metronome sounds" aria-expanded={open}>
+            ⚙
+          </Btn>
+        )}
       </div>
 
       {open && (

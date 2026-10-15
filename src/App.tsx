@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AudioEngine, type Timbre } from './audio/AudioEngine'
 import { FLAT_EQ, type EqState } from './audio/eq'
 import { TRANSPOSITIONS, type Spelling } from './analysis/notes'
@@ -8,8 +8,13 @@ import { WaveformView } from './components/WaveformView'
 import { Overview } from './components/Overview'
 import { TopBar } from './components/TopBar'
 import { MAX_SPEED, MIN_SPEED, Transport } from './components/Transport'
-import { AnalysisPanel } from './components/AnalysisPanel'
-import { Sidebar, type SidebarTab } from './components/Sidebar'
+import { ChordGuessPanel, KeyboardPanel } from './components/KeyboardPanel'
+import { LiveGuitarPanel } from './components/GuitarPanel'
+import { EqTab, isEqActive, LoopsTab, MarkersTab, MixTab, type ToolProps } from './components/ToolPanels'
+import { MetronomeEditor } from './components/MetronomeEditor'
+import { useLiveAnalysis } from './analysis/live'
+import { DEFAULT_LAYOUT, loadLayout, movePanel, panelsIn, saveLayout, toggleFloat, type Layout, type PanelId, type Place } from './layout/layout'
+import { BottomDock, FloatingLayer, PanelsBar, SidebarHost } from './layout/LayoutUI'
 import { ShortcutsDialog, type Capture } from './components/ShortcutsDialog'
 import { Btn } from './components/Controls'
 import { loadProject, projectKey, saveProject, uid, type Marker, type MarkerKind, type ProjectData, type SavedLoop } from './project'
@@ -56,11 +61,9 @@ interface Prefs {
   spelling: Spelling
   a4: number
   timbre: Timbre
-  sidebarTab: SidebarTab
   sidebarOpen: boolean
   follow: boolean
   volume: number
-  showGuitar: boolean
   capo: number
   metronome: MetronomePrefs
   snapToBeats: boolean
@@ -75,11 +78,9 @@ const DEFAULT_PREFS: Prefs = {
   spelling: 'auto',
   a4: 440,
   timbre: 'piano',
-  sidebarTab: 'stems',
   sidebarOpen: true,
   follow: true,
   volume: 0.8,
-  showGuitar: true,
   capo: 0,
   metronome: { ...DEFAULT_METRONOME, on: false },
   snapToBeats: true,
@@ -139,9 +140,8 @@ export default function App() {
   const [spelling, setSpelling] = useState(initialPrefs.spelling)
   const [a4, setA4] = useState(initialPrefs.a4)
   const [timbre, setTimbre] = useState<Timbre>(initialPrefs.timbre)
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(initialPrefs.sidebarTab)
   const [sidebarOpen, setSidebarOpen] = useState(initialPrefs.sidebarOpen)
-  const [showGuitar, setShowGuitar] = useState(initialPrefs.showGuitar)
+  const [layout, setLayout] = useState<Layout>(loadLayout)
   const [capo, setCapo] = useState(initialPrefs.capo)
   // Older saved prefs only had { on, volume }; fill in the sound settings.
   const [metronome, setMetronome] = useState<MetronomePrefs>(() => ({ ...DEFAULT_METRONOME, ...initialPrefs.metronome }))
@@ -209,15 +209,33 @@ export default function App() {
 
   const getPosition = useCallback(() => engine?.position ?? 0, [engine])
 
+  // ---- layout ----
+  useEffect(() => saveLayout(layout), [layout])
+  const movePanelTo = useCallback((id: PanelId, place: Place) => {
+    setLayout((l) => movePanel(l, id, place))
+    if (place === 'sidebar') setSidebarOpen(true)
+  }, [])
+  /** Brings a panel into view wherever it lives (a hidden one goes to the sidebar). */
+  const focusPanel = useCallback((id: PanelId) => {
+    setLayout((l) => {
+      const place = l.place[id]
+      if (place === 'hidden') return movePanel(l, id, 'sidebar')
+      if (place === 'sidebar') return { ...l, tab: id }
+      if (place === 'float') return l.open[id] ? { ...l, zOrder: [...l.zOrder.filter((x) => x !== id), id] } : toggleFloat(l, id)
+      return l
+    })
+    setSidebarOpen(true)
+  }, [])
+
   // ---- persistence ----
   useEffect(() => {
-    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainer: trainerSettings }
+    const prefs: Prefs = { transposition, spelling, a4, timbre, sidebarOpen, follow, volume, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainer: trainerSettings }
     try {
       localStorage.setItem('musikatu.prefs.v1', JSON.stringify(prefs))
     } catch {
       /* ignore */
     }
-  }, [transposition, spelling, a4, timbre, sidebarTab, sidebarOpen, follow, volume, showGuitar, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainerSettings])
+  }, [transposition, spelling, a4, timbre, sidebarOpen, follow, volume, capo, metronome, snapToBeats, showPianoRoll, noteSynth, countIn, trainerSettings])
 
   useEffect(() => {
     if (!projectId) return
@@ -415,8 +433,7 @@ export default function App() {
       setSelectedMarker(marker.id)
       // Naming a section steals the keyboard, so only offer it when stopped.
       if (kind === 'section' && !engine.isPlaying) {
-        setSidebarOpen(true)
-        setSidebarTab('markers')
+        focusPanel('beats')
         setEditMarkerRequest({ id: marker.id, n: Date.now() })
       }
     },
@@ -843,6 +860,205 @@ export default function App() {
 
   const disabled = !engine || !file
 
+  // ---- live analysis: runs once for the keyboard, chord guess and guitar panels, wherever they are ----
+  const shown = (id: PanelId) => layout.place[id] === 'bottom' || (layout.place[id] === 'float' && !!layout.open[id]) || (layout.place[id] === 'sidebar' && sidebarOpen && layout.tab === id)
+  useLiveAnalysis({
+    enabled: shown('keyboard') || shown('chordGuess') || shown('guitar'),
+    peaks: file?.peaks ?? null,
+    sampleRate,
+    getPosition,
+    pitchRatio,
+    channelMode,
+    eqWeights,
+    layers: analysisLayers,
+    a4,
+  })
+  /** Panels with something switched on get a dot on their tab / button. */
+  const panelDots = new Set<PanelId>([
+    ...(stemsActive ? (['stems'] as const) : []),
+    ...(isEqActive(eq) ? (['eq'] as const) : []),
+    ...(channelMode !== 'stereo' ? (['mix'] as const) : []),
+    ...(metronome.on ? (['metronome'] as const) : []),
+  ])
+
+  // ---- panels (placed by the layout: sidebar, bottom strip, floating windows) ----
+  const toolProps: ToolProps = {
+    sampleRate: sampleRate,
+    disabled: disabled,
+    markers: markers,
+    selectedMarker: selectedMarker,
+    editMarkerRequest: editMarkerRequest,
+    onMarkerSeek: (id) => {
+setSelectedMarker(id)
+const m = markers.find((x) => x.id === id)
+if (m) engine?.seek(m.pos)
+},
+    onMarkerRename: (id, name) => setMarkers((ms) => ms.map((m) => (m.id === id ? { ...m, name } : m))),
+    onMarkerDelete: deleteMarker,
+    onMarkerAdd: addMarker,
+    onMarkersClear: (kind) => setMarkers((ms) => ms.filter((m) => m.kind !== kind)),
+    tempo: tempo,
+    onTap: tap,
+    loops: loops,
+    selection: selection,
+    activeLoop: activeLoop,
+    onLoopSave: saveLoop,
+    onLoopRecall: recallLoop,
+    onLoopRename: (id, name) => setLoops((ls) => ls.map((l) => (l.id === id ? { ...l, name } : l))),
+    onLoopDelete: (id) => setLoops((ls) => ls.filter((l) => l.id !== id)),
+    onLoopUpdate: (id) => selection && setLoops((ls) => ls.map((l) => (l.id === id ? { ...l, ...selection } : l))),
+    engine: engine,
+    eq: eq,
+    onEq: setEq,
+    channelMode: channelMode,
+    onChannelMode: setChannelMode,
+    channels: file?.buffer.numberOfChannels ?? 2,
+    gridPanel: (
+        <GridPanel
+          grid={beatGrid}
+          status={beats.status}
+          hasFile={!!file}
+          sampleRate={sampleRate}
+          speed={speed}
+          getPosition={getPosition}
+          onRerun={() => void beats.run()}
+          onGrid={setBeatGrid}
+          snap={snapToBeats}
+          onSnap={setSnapToBeats}
+          onLoopBars={loopBars}
+        />
+    ),
+    practicePanel: (
+        <PracticePanel
+          countIn={countIn}
+          onCountIn={setCountIn}
+          hasGrid={!!beatGrid}
+          meter={meter}
+          trainer={trainerSettings}
+          onTrainer={setTrainerSettings}
+          state={trainer}
+          onStart={startTrainerSession}
+          onStop={stopTrainerSession}
+          hasFile={!!file}
+          loopReady={!!selection}
+        />
+    ),
+  }
+  const renderPanel = (id: PanelId): ReactNode => {
+    switch (id) {
+      case 'stems':
+        return (
+            <StemsTab
+              ctl={stemsCtl}
+              hasFile={!!file}
+              fileName={file?.name ?? null}
+              duration={file?.buffer.duration ?? 0}
+              mix={stemMix}
+              onMix={setStemMix}
+              projectId={projectId}
+            />
+        )
+      case 'chords':
+        return (
+            <ChordsTab
+              track={chordTrack}
+              status={chords.status}
+              hasFile={!!file}
+              hasStems={!!stems}
+              sampleRate={sampleRate}
+              fileName={file?.name ?? null}
+              getPosition={getPosition}
+              label={chordLabel}
+              parse={parseChord}
+              pitchShift={pitchShift}
+              spelling={spelling}
+              capo={capo}
+              a4={a4}
+              engine={engine}
+              onRun={(source, vocabulary) => chords.run(source, vocabulary)}
+              onEdit={(i, chord) => editChords((segs) => ((segs[i].chord = chord), segs))}
+              onDelete={(i) =>
+                editChords((segs) => {
+                  if (segs.length < 2) return segs
+                  if (i > 0) segs[i - 1].end = segs[i].end
+                  else segs[1].start = segs[0].start
+                  segs.splice(i, 1)
+                  return segs
+                })
+              }
+              onSplit={() =>
+                editChords((segs) => {
+                  const pos = Math.round(engine?.position ?? 0)
+                  const i = segmentAt(segs, pos)
+                  if (i < 0 || pos - segs[i].start < sampleRate * 0.1 || segs[i].end - pos < sampleRate * 0.1) return segs
+                  // mergeShort would re-join two identical halves, so mark the new half as "no chord" for the user to name
+                  segs.splice(i + 1, 0, { ...segs[i], start: pos, chord: null })
+                  segs[i].end = pos
+                  return segs
+                })
+              }
+              onSeek={(i) => {
+                const seg = chordTrack?.segments[i]
+                if (seg) engine?.seek(seg.start)
+              }}
+              onLoop={(i) => {
+                selectChordSpan(i)
+                setLoopOn(true)
+              }}
+              grid={beatGrid}
+              songLength={length}
+            />
+        )
+      case 'notes':
+        return (
+            <NotesTab
+              ctl={transcription}
+              tracks={noteTracks}
+              onTracks={replaceNoteTracks}
+              hasFile={!!file}
+              hasStems={!!stems}
+              hasGrid={!!beatGrid}
+              synth={noteSynth}
+              onSynth={setNoteSynth}
+              showRoll={showPianoRoll}
+              onShowRoll={setShowPianoRoll}
+              selectedCount={selectedNotes.size}
+              onExport={exportMidi}
+              spelling={spelling}
+            />
+        )
+      case 'beats':
+        return <MarkersTab {...toolProps} />
+      case 'practice':
+        return <LoopsTab {...toolProps} />
+      case 'eq':
+        return <EqTab {...toolProps} />
+      case 'mix':
+        return <MixTab {...toolProps} />
+      case 'metronome':
+        return (
+          <MetronomeEditor
+            value={metronome}
+            onChange={setMetronome}
+            hasGrid={!!beatGrid}
+            onPreview={(accent) => {
+              // send the newest settings first (a preset click and its preview happen in the same tick)
+              const { on, ...settings } = metronomeRef.current
+              engine?.setMetronome(on && !!beatGrid, settings)
+              engine?.previewClick(accent)
+            }}
+            standalone
+          />
+        )
+      case 'keyboard':
+        return <KeyboardPanel engine={engine} transpose={transpose} spelling={spelling} a4={a4} timbre={timbre} />
+      case 'chordGuess':
+        return <ChordGuessPanel transpose={transpose} spelling={spelling} a4={a4} onA4={setA4} timbre={timbre} onTimbre={setTimbre} />
+      case 'guitar':
+        return <LiveGuitarPanel engine={engine} spelling={spelling} transpose={transpose} capo={capo} onCapo={setCapo} a4={a4} />
+    }
+  }
+
   return (
     <div className="app">
       <TopBar
@@ -860,6 +1076,15 @@ export default function App() {
         spelling={spelling}
         onSpelling={setSpelling}
         onShortcuts={() => setShortcutsOpen(true)}
+        tools={
+          <PanelsBar
+            layout={layout}
+            dots={panelDots}
+            onToggle={(id) => setLayout((l) => toggleFloat(l, id))}
+            onMove={movePanelTo}
+            onReset={() => setLayout(DEFAULT_LAYOUT)}
+          />
+        }
         sidebarOpen={sidebarOpen}
         onSidebar={setSidebarOpen}
         disabled={disabled}
@@ -903,8 +1128,7 @@ export default function App() {
                 onMarkerEdit={(id) => {
                   setSelectedMarker(id)
                   if (markers.find((m) => m.id === id)?.kind !== 'section') return
-                  setSidebarOpen(true)
-                  setSidebarTab('markers')
+                  focusPanel('beats')
                   setEditMarkerRequest({ id, n: Date.now() })
                 }}
                 onWidth={setDetailWidth}
@@ -951,25 +1175,7 @@ export default function App() {
               }}
             />
           )}
-          <AnalysisPanel
-            engine={engine}
-            peaks={file?.peaks ?? null}
-            getPosition={getPosition}
-            pitchRatio={pitchRatio}
-            channelMode={channelMode}
-            eqWeights={eqWeights}
-            layers={analysisLayers}
-            transpose={transpose}
-            spelling={spelling}
-            a4={a4}
-            onA4={setA4}
-            timbre={timbre}
-            onTimbre={setTimbre}
-            showGuitar={showGuitar}
-            onShowGuitar={setShowGuitar}
-            capo={capo}
-            onCapo={setCapo}
-          />
+          <BottomDock ids={panelsIn(layout, 'bottom')} render={renderPanel} onMove={movePanelTo} />
           {status && (
             <div className={`toast ${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>
               {status.text}
@@ -988,158 +1194,8 @@ export default function App() {
           )}
         </main>
 
-        {sidebarOpen && (
-          <Sidebar
-            tab={sidebarTab}
-            onTab={setSidebarTab}
-            sampleRate={sampleRate}
-            disabled={disabled}
-            markers={markers}
-            selectedMarker={selectedMarker}
-            editMarkerRequest={editMarkerRequest}
-            onMarkerSeek={(id) => {
-              setSelectedMarker(id)
-              const m = markers.find((x) => x.id === id)
-              if (m) engine?.seek(m.pos)
-            }}
-            onMarkerRename={(id, name) => setMarkers((ms) => ms.map((m) => (m.id === id ? { ...m, name } : m)))}
-            onMarkerDelete={deleteMarker}
-            onMarkerAdd={addMarker}
-            onMarkersClear={(kind) => setMarkers((ms) => ms.filter((m) => m.kind !== kind))}
-            tempo={tempo}
-            onTap={tap}
-            loops={loops}
-            selection={selection}
-            activeLoop={activeLoop}
-            onLoopSave={saveLoop}
-            onLoopRecall={recallLoop}
-            onLoopRename={(id, name) => setLoops((ls) => ls.map((l) => (l.id === id ? { ...l, name } : l)))}
-            onLoopDelete={(id) => setLoops((ls) => ls.filter((l) => l.id !== id))}
-            onLoopUpdate={(id) => selection && setLoops((ls) => ls.map((l) => (l.id === id ? { ...l, ...selection } : l)))}
-            engine={engine}
-            eq={eq}
-            onEq={setEq}
-            channelMode={channelMode}
-            onChannelMode={setChannelMode}
-            channels={file?.buffer.numberOfChannels ?? 2}
-            stemsActive={stemsActive}
-            gridPanel={
-              <GridPanel
-                grid={beatGrid}
-                status={beats.status}
-                hasFile={!!file}
-                sampleRate={sampleRate}
-                speed={speed}
-                getPosition={getPosition}
-                onRerun={() => void beats.run()}
-                onGrid={setBeatGrid}
-                metronome={metronome}
-                onMetronome={setMetronome}
-                onPreviewClick={(accent) => {
-                  // send the newest settings first (a preset click and its preview happen in the same tick)
-                  const { on, ...settings } = metronomeRef.current
-                  engine?.setMetronome(on && !!beatGrid, settings)
-                  engine?.previewClick(accent)
-                }}
-                snap={snapToBeats}
-                onSnap={setSnapToBeats}
-                onLoopBars={loopBars}
-              />
-            }
-            practicePanel={
-              <PracticePanel
-                countIn={countIn}
-                onCountIn={setCountIn}
-                hasGrid={!!beatGrid}
-                meter={meter}
-                trainer={trainerSettings}
-                onTrainer={setTrainerSettings}
-                state={trainer}
-                onStart={startTrainerSession}
-                onStop={stopTrainerSession}
-                hasFile={!!file}
-                loopReady={!!selection}
-              />
-            }
-            notesPanel={
-              <NotesTab
-                ctl={transcription}
-                tracks={noteTracks}
-                onTracks={replaceNoteTracks}
-                hasFile={!!file}
-                hasStems={!!stems}
-                hasGrid={!!beatGrid}
-                synth={noteSynth}
-                onSynth={setNoteSynth}
-                showRoll={showPianoRoll}
-                onShowRoll={setShowPianoRoll}
-                selectedCount={selectedNotes.size}
-                onExport={exportMidi}
-                spelling={spelling}
-              />
-            }
-            chordsPanel={
-              <ChordsTab
-                track={chordTrack}
-                status={chords.status}
-                hasFile={!!file}
-                hasStems={!!stems}
-                sampleRate={sampleRate}
-                fileName={file?.name ?? null}
-                getPosition={getPosition}
-                label={chordLabel}
-                parse={parseChord}
-                pitchShift={pitchShift}
-                spelling={spelling}
-                capo={capo}
-                a4={a4}
-                engine={engine}
-                onRun={(source, vocabulary) => chords.run(source, vocabulary)}
-                onEdit={(i, chord) => editChords((segs) => ((segs[i].chord = chord), segs))}
-                onDelete={(i) =>
-                  editChords((segs) => {
-                    if (segs.length < 2) return segs
-                    if (i > 0) segs[i - 1].end = segs[i].end
-                    else segs[1].start = segs[0].start
-                    segs.splice(i, 1)
-                    return segs
-                  })
-                }
-                onSplit={() =>
-                  editChords((segs) => {
-                    const pos = Math.round(engine?.position ?? 0)
-                    const i = segmentAt(segs, pos)
-                    if (i < 0 || pos - segs[i].start < sampleRate * 0.1 || segs[i].end - pos < sampleRate * 0.1) return segs
-                    // mergeShort would re-join two identical halves, so mark the new half as "no chord" for the user to name
-                    segs.splice(i + 1, 0, { ...segs[i], start: pos, chord: null })
-                    segs[i].end = pos
-                    return segs
-                  })
-                }
-                onSeek={(i) => {
-                  const seg = chordTrack?.segments[i]
-                  if (seg) engine?.seek(seg.start)
-                }}
-                onLoop={(i) => {
-                  selectChordSpan(i)
-                  setLoopOn(true)
-                }}
-                grid={beatGrid}
-                songLength={length}
-              />
-            }
-            stemsPanel={
-              <StemsTab
-                ctl={stemsCtl}
-                hasFile={!!file}
-                fileName={file?.name ?? null}
-                duration={file?.buffer.duration ?? 0}
-                mix={stemMix}
-                onMix={setStemMix}
-                projectId={projectId}
-              />
-            }
-          />
+        {sidebarOpen && panelsIn(layout, 'sidebar').length > 0 && (
+          <SidebarHost ids={panelsIn(layout, 'sidebar')} tab={layout.tab} onTab={(id) => setLayout((l) => ({ ...l, tab: id }))} dots={panelDots} render={renderPanel} onMove={movePanelTo} />
         )}
       </div>
 
@@ -1170,6 +1226,8 @@ export default function App() {
         onTrainerStop={stopTrainerSession}
         onMetronome={() => setMetronome((m) => ({ ...m, on: !m.on }))}
       />
+
+      <FloatingLayer layout={layout} render={renderPanel} onLayout={setLayout} onMove={movePanelTo} />
 
       {shortcutsOpen && (
         <ShortcutsDialog

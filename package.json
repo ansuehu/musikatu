@@ -71,6 +71,9 @@
         "zip"
       ],
       "files": [
+        "dist/**",
+        "electron/**",
+        "package.json",
         "!node_modules/onnxruntime-node/bin/**/win32/**",
         "!node_modules/onnxruntime-node/bin/**/linux/**"
       ],
@@ -81,6 +84,9 @@
         "nsis"
       ],
       "files": [
+        "dist/**",
+        "electron/**",
+        "package.json",
         "!node_modules/onnxruntime-node/bin/**/linux/**",
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
       ],
@@ -98,6 +104,9 @@
         "tar.gz"
       ],
       "files": [
+        "dist/**",
+        "electron/**",
+        "package.json",
         "!node_modules/onnxruntime-node/bin/**/win32/**",
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
       ],

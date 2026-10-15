@@ -240,6 +240,30 @@ export function analyzeChords(
 }
 
 /**
+ * Harmony on each beat, as the beat-synchronous chart sees it: slot k runs from beats[k] to the next beat
+ * (the last for one median beat spacing). Transcribed notes are blended in as in the chart. Used by the
+ * tab sync.
+ */
+export function beatHarmony(
+  mono: Float32Array,
+  sampleRate: number,
+  beats: number[],
+  options: { a4?: number; hopSeconds?: number; notes?: ChordNote[]; noteWeight?: number } = {},
+  onProgress?: (fraction: number) => void,
+): Slots {
+  const hopSeconds = options.hopSeconds ?? 0.2
+  const hop = Math.round(hopSeconds * sampleRate)
+  const frames = analyzeFrames(mono, sampleRate, hopSeconds, options.a4 ?? 440, onProgress)
+  const gaps = beats.slice(1).map((b, i) => b - beats[i]).sort((a, b) => a - b)
+  const spacing = gaps[gaps.length >> 1] ?? sampleRate / 2
+  const edges = [...beats, beats[beats.length - 1] + spacing]
+  let slots = poolFrames(frames, hop, edges)
+  if (options.notes?.length) slots = blend(slots, poolNotes(options.notes, edges), options.noteWeight ?? NOTE_WEIGHT)
+  onProgress?.(1)
+  return slots
+}
+
+/**
  * Slots between consecutive beats; before the first and after the last beat the median beat spacing is
  * continued, so intros and endings are charted at the same resolution. Returns slot starts plus the end.
  */
@@ -255,7 +279,7 @@ function beatSlots(beats: number[], length: number): number[] {
 }
 
 /** Per-beat description of the harmony: pitch-class weights (sum 1), loudness and bass note. */
-interface Slots {
+export interface Slots {
   chroma: Float32Array[]
   level: Float32Array
   bass: (number | null)[]

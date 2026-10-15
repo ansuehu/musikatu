@@ -3,6 +3,7 @@ import type { ChordSegment, Vocabulary } from './chordTimeline'
 import type { ChordJob, ChordJobMessage } from './chordWorker'
 import type { LoadedStem } from '../stems/useStems'
 import type { BeatGrid } from '../rhythm/grid'
+import type { NoteSet } from './noteHarmony'
 
 export type ChordSource = 'mix' | 'instruments'
 
@@ -17,6 +18,8 @@ export interface ChordTrack {
   snapped?: boolean
   /** Decoded one chord per beat on the song's beat grid, so every change lands on a beat. */
   beatSynced?: boolean
+  /** Key of the transcribed notes the chart was read from, if any. */
+  notesKey?: string
 }
 
 export type ChordStatus = { kind: 'idle' } | { kind: 'running'; fraction: number } | { kind: 'error'; message: string }
@@ -44,15 +47,19 @@ interface Args {
   a4: number
   /** Beat grid, once known: the chart is then decoded on the beats (and redone when the grid changes). */
   grid: BeatGrid | null
+  /** Transcribed notes to read the harmony from as well (redone when they change). */
+  notes: NoteSet | null
 }
 
 /** Runs whole-song chord analysis in a worker; auto-runs for new songs and upgrades to stems when they arrive. */
-export function useChordTrack({ buffer, stems, track, onTrack, a4, grid }: Args) {
+export function useChordTrack({ buffer, stems, track, onTrack, a4, grid, notes }: Args) {
   const [status, setStatus] = useState<ChordStatus>({ kind: 'idle' })
   const worker = useRef<Worker | null>(null)
   const jobId = useRef(0)
   const gridRef = useRef(grid)
   gridRef.current = grid
+  const notesRef = useRef(notes)
+  notesRef.current = notes
   /** The grid the current chart was decoded on (null: none yet for this song). */
   const usedGrid = useRef<BeatGrid | null>(null)
 
@@ -68,6 +75,7 @@ export function useChordTrack({ buffer, stems, track, onTrack, a4, grid }: Args)
       worker.current = w
       const id = ++jobId.current
       const g = gridRef.current
+      const ns = notesRef.current
       setStatus({ kind: 'running', fraction: 0 })
       w.onmessage = (e: MessageEvent<ChordJobMessage>) => {
         const m = e.data
@@ -77,16 +85,16 @@ export function useChordTrack({ buffer, stems, track, onTrack, a4, grid }: Args)
         else {
           setStatus({ kind: 'idle' })
           usedGrid.current = g
-          onTrack({ segments: m.segments, vocabulary, source: useStems ? 'instruments' : 'mix', edited: false, beatSynced: !!g })
+          onTrack({ segments: m.segments, vocabulary, source: useStems ? 'instruments' : 'mix', edited: false, beatSynced: !!g, notesKey: ns?.key })
           w.terminate()
           if (worker.current === w) worker.current = null
           // the beats arrived while this ran without them: chart again on the beats
-          if (gridRef.current !== g) runRef.current(useStems ? 'instruments' : 'mix', vocabulary)
+          if (gridRef.current !== g || notesRef.current?.key !== ns?.key) runRef.current(useStems ? 'instruments' : 'mix', vocabulary)
         }
       }
       w.onerror = (e) => setStatus({ kind: 'error', message: e.message || 'Chord analysis failed' })
       const beatOptions = g ? { beats: g.beats, downbeats: g.downbeats } : {}
-      const job: ChordJob = { id, mono, sampleRate: buffer.sampleRate, options: { vocabulary, a4, ...beatOptions } }
+      const job: ChordJob = { id, mono, sampleRate: buffer.sampleRate, options: { vocabulary, a4, ...beatOptions, ...(ns ? { notes: ns.notes } : {}) } }
       w.postMessage(job, [mono.buffer])
     },
     [buffer, stems, onTrack, a4],
@@ -125,6 +133,19 @@ export function useChordTrack({ buffer, stems, track, onTrack, a4, grid }: Args)
     }
     runRef.current(track.source, track.vocabulary)
   }, [grid])
+
+  // Notes were transcribed, re-detected or edited: redo an untouched chart with them (after a pause, so
+  // editing notes one by one doesn't restart the analysis each time).
+  const notesKey = notes?.key
+  useEffect(() => {
+    const { track } = latest.current
+    if (!track || track.edited || (track.notesKey ?? undefined) === notesKey) return
+    const t = setTimeout(() => {
+      const { track, status } = latest.current
+      if (track && !track.edited && status.kind !== 'running') runRef.current(track.source, track.vocabulary)
+    }, 800)
+    return () => clearTimeout(t)
+  }, [notesKey])
 
   return { status, run }
 }

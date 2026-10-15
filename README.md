@@ -13,7 +13,7 @@ A desktop workbench for transcribing music by ear: slow it down, loop it, see wh
   - a whole-song chord chart you can edit;
   - export as text, bar by bar.
 - **Beats and bars:** automatic tempo, bars and a metronome; loop bars N–M, snap selections to beats.
-- **Audio → MIDI:** transcribe any instrument to a piano roll, play it along, and export MIDI that lines up with the bars.
+- **Audio → MIDI:** transcribe any instrument to a piano roll, play it along, and export MIDI that lines up with the bars. Transcribed notes also sharpen the chord chart and the live chord guess.
 - **Practice:**
   - a count-in before playback;
   - a speed trainer that speeds the loop up as you repeat it.

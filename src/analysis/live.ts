@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { SpectrumAnalyzer } from './spectrum'
 import { estimateNotes, type NoteEstimate } from './notes'
+import { withNotes, type NoteSet } from './noteHarmony'
 import type { ChannelMode } from '../dsp/ChannelMixer'
 import type { Peaks } from '../waveform/peaks'
 
@@ -54,7 +55,10 @@ interface Args {
   /** When stems are playing: the audible sources and their gains, so analysis follows what you hear. */
   layers: { id: string; channels: Float32Array[]; gain: number }[] | null
   a4: number
+  /** Transcribed notes of what is analysed: the chord guess reads them as well as the spectrum. */
+  notes: NoteSet | null
 }
+
 
 const ids = new WeakMap<object, number>()
 let nextId = 1
@@ -86,7 +90,7 @@ export function useLiveAnalysis(args: Args): void {
       }
       if (now - last < ANALYSIS_INTERVAL_MS) return
       const pos = p.getPosition()
-      const k = `${p.peaks.id}|${Math.round(pos / 256)}|${p.channelMode}|${p.pitchRatio}|${p.a4}|${idOf(p.eqWeights)}|${p.layers?.map((l) => `${l.id}:${l.gain.toFixed(3)}`).join(',') ?? 'mix'}`
+      const k = `${p.peaks.id}|${Math.round(pos / 256)}|${p.channelMode}|${p.pitchRatio}|${p.a4}|${idOf(p.eqWeights)}|${p.layers?.map((l) => `${l.id}:${l.gain.toFixed(3)}`).join(',') ?? 'mix'}|${p.notes?.key ?? ''}`
       if (k === key) return
       key = k
       last = now
@@ -114,7 +118,9 @@ export function useLiveAnalysis(args: Args): void {
       }
       const binHz = (sr / analyzer.size) * p.pitchRatio
       // the analyser reuses its buffer: hand subscribers a copy
-      liveAnalysis.set({ mags: mags.slice(), est: estimateNotes(mags, binHz, p.a4), binHz, version: liveAnalysis.get().version + 1 })
+      let est = estimateNotes(mags, binHz, p.a4)
+      if (p.notes) est = withNotes(est, p.notes, pos, sr, Math.round(12 * Math.log2(p.pitchRatio)))
+      liveAnalysis.set({ mags: mags.slice(), est, binHz, version: liveAnalysis.get().version + 1 })
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)

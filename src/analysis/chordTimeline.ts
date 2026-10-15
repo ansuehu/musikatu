@@ -37,7 +37,24 @@ export interface ChordTrackOptions {
   beats?: number[]
   /** Indices into `beats` that start a bar. */
   downbeats?: number[]
+  /**
+   * Transcribed notes (positions in samples of `mono`). When given, they describe the harmony instead of, or
+   * blended with, the audio spectrum: no overtones or drums, and exact note lengths.
+   */
+  notes?: ChordNote[]
+  /** Share of the notes in the blend with the audio, 0..1 (default NOTE_WEIGHT). */
+  noteWeight?: number
 }
+
+export interface ChordNote {
+  start: number
+  end: number
+  midi: number
+  velocity: number
+}
+
+/** How much the transcribed notes count against the audio spectrum when both are there (see scripts/chord-eval). */
+export const NOTE_WEIGHT = 0.7
 
 /** Cost of changing chord on a beat, by where the beat falls in the bar (tuned on the evaluation set, see scripts/chord-eval). */
 export const BEAT_SWITCH_PENALTY = { downbeat: 0.18, midBar: 0.33, other: 0.65, unknownBar: 0.38 }
@@ -132,8 +149,15 @@ export function analyzeChords(
   const penalty = options.switchPenalty ?? 0.9
   const frames = analyzeFrames(mono, sampleRate, hopSeconds, options.a4 ?? 440, (f) => onProgress?.(f * 0.9))
   if (frames.length === 0) return []
-  if (options.beats && options.beats.length >= 4) {
-    const segs = decodeOnBeats(frames, hop, mono.length, options.vocabulary, options.beats, options.downbeats ?? [])
+  const notes = options.notes?.length ? options.notes : null
+  if ((options.beats && options.beats.length >= 4) || notes) {
+    // without a beat grid, notes are pooled on a steady half-second grid instead
+    const beats = options.beats && options.beats.length >= 4 ? options.beats : Array.from({ length: Math.floor(mono.length / (0.5 * sampleRate)) }, (_, i) => Math.round((i + 0.5) * 0.5 * sampleRate))
+    const downbeats = options.beats && options.beats.length >= 4 ? (options.downbeats ?? []) : []
+    const edges = beatSlots(beats, mono.length)
+    let slots = poolFrames(frames, hop, edges)
+    if (notes) slots = blend(slots, poolNotes(notes, edges), options.noteWeight ?? NOTE_WEIGHT)
+    const segs = decodeOnBeats(slots, edges, options.vocabulary, beats, downbeats)
     onProgress?.(1)
     return segs
   }
@@ -230,26 +254,19 @@ function beatSlots(beats: number[], length: number): number[] {
   return [0, ...head, ...inside, ...tail, length]
 }
 
-/** One chord per beat: chroma pooled over each beat, Viterbi with switch costs that depend on the position in the bar. */
-function decodeOnBeats(frames: Frame[], hop: number, length: number, vocabulary: Vocabulary, beats: number[], downbeats: number[]): ChordSegment[] {
-  const edges = beatSlots(beats, length)
-  const B = edges.length - 1
-  // position in the bar of each slot (0 = downbeat), or -1 when the bar isn't known
-  const isDown = new Set(downbeats.map((i) => beats[i]))
-  const barPos = new Int32Array(B).fill(-1)
-  if (isDown.size) {
-    let pos = -1
-    for (let k = 0; k < B; k++) {
-      if (isDown.has(edges[k])) pos = 0
-      else if (pos >= 0) pos++
-      barPos[k] = pos
-    }
-  }
+/** Per-beat description of the harmony: pitch-class weights (sum 1), loudness and bass note. */
+interface Slots {
+  chroma: Float32Array[]
+  level: Float32Array
+  bass: (number | null)[]
+}
 
-  // pool frame chroma per slot (louder frames count more); bass by level-weighted vote
+/** Audio chroma pooled per slot (louder frames count more); bass by level-weighted vote. */
+function poolFrames(frames: Frame[], hop: number, edges: number[]): Slots {
+  const B = edges.length - 1
   const chroma: Float32Array[] = []
   const level = new Float32Array(B)
-  const bassOf: (number | null)[] = []
+  const bass: (number | null)[] = []
   for (let k = 0; k < B; k++) {
     const a = edges[k]
     const b = edges[k + 1]
@@ -264,13 +281,83 @@ function decodeOnBeats(frames: Frame[], hop: number, length: number, vocabulary:
       for (let pc = 0; pc < 12; pc++) c[pc] += fr.level * fr.chroma[pc]
       if (fr.bass !== null) votes[fr.bass] += fr.level
     }
-    let sum = 0
-    for (let pc = 0; pc < 12; pc++) sum += c[pc]
-    if (sum > 0) for (let pc = 0; pc < 12; pc++) c[pc] /= sum
+    normalise(c)
     chroma.push(c)
-    let bass: number | null = null
-    for (let pc = 0; pc < 12; pc++) if (votes[pc] > 0 && (bass === null || votes[pc] > votes[bass])) bass = pc
-    bassOf.push(bass)
+    let bk: number | null = null
+    for (let pc = 0; pc < 12; pc++) if (votes[pc] > 0 && (bk === null || votes[pc] > votes[bk])) bk = pc
+    bass.push(bk)
+  }
+  return { chroma, level, bass }
+}
+
+/**
+ * Transcribed notes pooled per slot: each pitch class weighted by how much of the slot it fills and how loud
+ * it is. The bass is the lowest note that holds for at least a quarter of the slot.
+ */
+function poolNotes(notes: ChordNote[], edges: number[]): Slots {
+  const B = edges.length - 1
+  const chroma = Array.from({ length: B }, () => new Float32Array(12))
+  const level = new Float32Array(B)
+  const lowest = new Int32Array(B).fill(1000)
+  for (const n of notes) {
+    // first slot that ends after the note starts
+    let lo = 0
+    let hi = B - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (edges[mid + 1] <= n.start) lo = mid + 1
+      else hi = mid
+    }
+    for (let k = lo; k < B && edges[k] < n.end; k++) {
+      const len = edges[k + 1] - edges[k]
+      const part = (Math.min(n.end, edges[k + 1]) - Math.max(n.start, edges[k])) / len
+      if (part <= 0) continue
+      const w = part * (n.velocity / 127)
+      chroma[k][n.midi % 12] += w
+      level[k] += w
+      if (part >= 0.25 && n.midi < lowest[k]) lowest[k] = n.midi
+    }
+  }
+  for (const c of chroma) normalise(c)
+  return { chroma, level, bass: Array.from(lowest, (m) => (m < 1000 ? m % 12 : null)) }
+}
+
+/** Notes and audio together: chroma mixed with weight `w` for the notes; the notes' bass wins when they have one. */
+function blend(audio: Slots, notes: Slots, w: number): Slots {
+  if (w >= 1) return { ...notes, level: notes.level.map((v) => (v > NOTE_SILENCE ? 1 : 0)) }
+  const chroma = audio.chroma.map((c, k) => {
+    const n = notes.chroma[k]
+    const hasNotes = notes.level[k] > NOTE_SILENCE
+    const out = new Float32Array(12)
+    for (let pc = 0; pc < 12; pc++) out[pc] = hasNotes ? (1 - w) * c[pc] + w * n[pc] : c[pc]
+    return out
+  })
+  return { chroma, level: audio.level, bass: audio.bass.map((b, k) => notes.bass[k] ?? b) }
+}
+
+/** Below this much note coverage (velocity-weighted share of the slot), a slot counts as silent in notes-only mode. */
+const NOTE_SILENCE = 0.05
+
+function normalise(c: Float32Array) {
+  let sum = 0
+  for (let pc = 0; pc < 12; pc++) sum += c[pc]
+  if (sum > 0) for (let pc = 0; pc < 12; pc++) c[pc] /= sum
+}
+
+/** One chord per slot (beat): Viterbi with switch costs that depend on the position in the bar. */
+function decodeOnBeats(slots: Slots, edges: number[], vocabulary: Vocabulary, beats: number[], downbeats: number[]): ChordSegment[] {
+  const B = edges.length - 1
+  const { chroma, level, bass: bassOf } = slots
+  // position in the bar of each slot (0 = downbeat), or -1 when the bar isn't known
+  const isDown = new Set(downbeats.map((i) => beats[i]))
+  const barPos = new Int32Array(B).fill(-1)
+  if (isDown.size) {
+    let pos = -1
+    for (let k = 0; k < B; k++) {
+      if (isDown.has(edges[k])) pos = 0
+      else if (pos >= 0) pos++
+      barPos[k] = pos
+    }
   }
 
   const tpl = templates(vocabulary)

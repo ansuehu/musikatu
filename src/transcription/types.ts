@@ -1,5 +1,5 @@
-import type { NoteParams } from './basicPitch'
-import { STEM_COLORS, STEM_LABELS, type StemName } from '../stems/types'
+import type { NoteParams } from './basicPitch.ts'
+import { STEM_COLORS, STEM_LABELS, type StemName } from '../stems/types.ts'
 
 export type NoteSource = 'mix' | StemName
 

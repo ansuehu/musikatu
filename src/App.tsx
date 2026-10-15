@@ -13,6 +13,7 @@ import { LiveGuitarPanel } from './components/GuitarPanel'
 import { EqTab, isEqActive, LoopsTab, MarkersTab, MixTab, type ToolProps } from './components/ToolPanels'
 import { MetronomeEditor } from './components/MetronomeEditor'
 import { useLiveAnalysis } from './analysis/live'
+import { chartNotes, liveNotes } from './analysis/noteHarmony'
 import { cellWidth, DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, saveLayout, setCellWidth, setSize, SIZE_LIMITS, type Layout, type PanelId, type Place } from './layout/layout'
 import { BottomDock, DragLayer, SidebarHost, ToolsButton, ToolsWindow } from './layout/LayoutUI'
 import { ShortcutsDialog, type Capture } from './components/ShortcutsDialog'
@@ -525,7 +526,11 @@ export default function App() {
       .filter((s) => (g[s.name] ?? 0) > 0)
       .map((s) => ({ id: s.name, channels: Array.from({ length: s.buffer.numberOfChannels }, (_, c) => s.buffer.getChannelData(c)), gain: g[s.name]! }))
   }, [stems, stemMix])
-  const listeningTo = analysisLabel(stemMix, !!stems)
+  const analysedNotes = useMemo(() => {
+    const g = analysisGains(stemMix, !!stems)
+    return liveNotes(noteTracks, g ? STEM_NAMES.filter((n) => (g[n] ?? 0) > 0) : null)
+  }, [noteTracks, stemMix, stems])
+  const listeningTo = analysisLabel(stemMix, !!stems) + (analysedNotes ? ' + notes' : '')
 
   // ---- beats and bars ----
   gridRef.current = beatGrid
@@ -655,7 +660,8 @@ export default function App() {
   const showRoll = showPianoRoll && noteTracks.some((t) => t.visible && t.notes.length)
 
   // ---- whole-song chord chart ----
-  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrack, a4, grid: beatGrid })
+  const chordNotes = useMemo(() => chartNotes(noteTracks), [noteTracks])
+  const chords = useChordTrack({ buffer: file?.buffer ?? null, stems, track: chordTrack, onTrack: setChordTrack, a4, grid: beatGrid, notes: chordNotes })
   // Names follow what you hear: the pitch shift (rounded) plus the instrument transposition.
   const pitchShift = Math.round(semitones + cents / 100)
   const chordLabel = useCallback(
@@ -861,6 +867,7 @@ export default function App() {
     eqWeights,
     layers: analysisLayers,
     a4,
+    notes: analysedNotes,
   })
   /** Panels with something switched on get a dot on their tab / button. */
   const panelDots = new Set<PanelId>([

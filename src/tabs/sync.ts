@@ -1,4 +1,4 @@
-import { align, DEFAULT_PARAMS, viterbi, type AlignParams, type AudioBeats, type Emissions, type Norm } from './align.ts'
+import { align, DEFAULT_PARAMS, viterbi, type AlignParams, type AudioBeats, type Emissions, type Norm, type Structure } from './align.ts'
 import { expandBars, type PlayedBar } from './expand.ts'
 import { pitchedTracks, tabUnits, type TabUnits } from './features.ts'
 import type { TabScore } from './model.ts'
@@ -127,15 +127,20 @@ export function regularBeats(beats: number[], downbeats: number[] = []): { beats
   return { beats: out, downbeats: down }
 }
 
-export function blockStarts(played: PlayedBar[]): boolean[] {
-  return played.map((p, i) => i === 0 || p.block !== played[i - 1].block)
+/** Blocks and section runs of the played tab, for the alignment's jumps. */
+export function structureOf(played: PlayedBar[]): Structure {
+  let part = 0
+  return {
+    blockStart: played.map((p, i) => i === 0 || p.block !== played[i - 1].block),
+    part: played.map((p, i) => (i > 0 && p.section !== played[i - 1].section ? ++part : part)),
+  }
 }
 
 /** Aligns a tab to a recording. */
 export function syncTab(score: TabScore, input: SyncInput): TabSync {
   const played = expandBars(score.bars)
   const tracks = input.tracks?.length ? input.tracks : pitchedTracks(score)
-  const starts = blockStarts(played)
+  const structure = structureOf(played)
   const params = { ...DEFAULT_PARAMS, ...input.params }
   const anchors = (input.anchors ?? []).map((a) => ({ played: a.played, beat: nearestBeat(input.beats, a.pos) }))
   let best: { factor: number; tab: TabUnits; r: ReturnType<typeof align> } | null = null
@@ -143,25 +148,33 @@ export function syncTab(score: TabScore, input: SyncInput): TabSync {
   let norm: Norm | undefined
   for (const factor of input.factors ?? [1, 2, 0.5]) {
     const tab = tabUnits(score, played, tracks, factor)
-    const r = align(tab, input.audio, starts, { params, anchors, shifts: input.shifts, norm })
+    const r = align(tab, input.audio, structure, { params, anchors, shifts: input.shifts, norm })
     norm = r.norm
     if (!best || r.score > best.r.score) best = { factor, tab, r }
   }
   const { factor, tab, r } = best!
   const out = buildSync(played, tab, r.path, r.em, input.beats)
-  // how much worse the best alignment gets if a section's first bar may not start where it was put:
-  // close to nothing means another placement (one beat off, another pass of a repeat) is as good
-  const anchored = new Set(anchors.map((a) => a.played))
-  for (const s of out.sections) {
-    const b = out.bars[s.first]
-    const beat = nearestBeat(input.beats, b.start)
-    if (anchored.has(b.played)) continue
-    const alt = viterbi(tab, r.em, starts, input.audio.downbeats, params, anchors, false, new Map([[beat, tab.offset[b.played]]])).score
-    s.confidence *= 1 - Math.exp(-Math.max(0, r.score - alt) / UNIQUE_SCALE)
-  }
   out.shift = r.shift
   out.factor = factor
   out.tracks = tracks
+  // how much worse the best alignment gets if a section's first bar may not start where it was put:
+  // close to nothing means other music fits there as well (or the same bar one beat off). Bars with the
+  // same notes (another pass of a repeat, a section written out twice) are ruled out too: which of them
+  // it is doesn't change what the panel shows.
+  const contentKey = played.map((_, p) => {
+    const parts: string[] = []
+    for (let j = 0; j < tab.units[p]; j++) parts.push(Array.from(tab.chroma[tab.offset[p] + j], (v) => Math.round(v * 20)).join(','))
+    return parts.join('|')
+  })
+  const anchored = new Set(anchors.map((a) => a.played))
+  for (const s of out.sections) {
+    const b = out.bars[s.first]
+    if (anchored.has(b.played)) continue
+    const beat = nearestBeat(input.beats, b.start)
+    const same = played.flatMap((_, p) => (contentKey[p] === contentKey[b.played] ? [tab.offset[p]] : []))
+    const alt = viterbi(tab, r.em, structure, input.audio.downbeats, params, anchors, false, new Map([[beat, same]])).score
+    s.confidence *= 1 - Math.exp(-Math.max(0, r.score - alt) / UNIQUE_SCALE)
+  }
   // hand-placed bars start exactly where they were put
   for (const a of input.anchors ?? []) {
     const b = out.bars.find((b) => b.played === a.played && Math.abs(b.start - a.pos) < (b.end - b.start) * 2)

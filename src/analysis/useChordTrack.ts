@@ -27,7 +27,8 @@ export type ChordStatus = { kind: 'idle' } | { kind: 'running'; fraction: number
 /** Stems that carry harmony; vocals and drums only confuse a chord chart. */
 const HARMONIC_STEMS = new Set(['bass', 'guitar', 'piano', 'other'])
 
-function monoOf(buffers: AudioBuffer[]): Float32Array {
+/** Average of the buffers, all channels. */
+export function monoOf(buffers: AudioBuffer[]): Float32Array {
   const out = new Float32Array(buffers[0].length)
   for (const b of buffers) {
     const n = b.numberOfChannels

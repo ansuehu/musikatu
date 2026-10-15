@@ -4,7 +4,7 @@
  *
  *   node scripts/tab-eval/make-tabs.ts <dir>
  *
- * Writes <dir>/out/<song>.<variant>.gp and .truth.json. A description lists the guitar shapes, the
+ * Writes <dir>/out/<song>.<variant>.gp, .truth.json and .written.json (written bar number per played bar). A description lists the guitar shapes, the
  * sections in tab order with their bars and repeat counts, and the beat (of <song>.beats.json) where
  * each pass starts in the recording. Variants change the tab the way real tabs differ from recordings:
  *
@@ -59,17 +59,21 @@ function build(song: Song, sections: (Section & { audioPasses: number })[], opts
   const guitar: string[] = []
   const bass: string[] = []
   const truth: number[][] = []
+  /** Written bar number (1-based) of each played bar. */
+  const written: number[] = []
   let lastTs = '4/4'
   for (const s of sections) {
     const passes = s.repeat ?? 1
     const bars = s.bars.map(parseBar)
     const passBeats = bars.reduce((a, b) => a + (b.num * 4) / b.den, 0)
     // which recording passes each tab pass may sit on: shifted by the passes the tab has more or fewer
+    const first = guitar.length + 1
     for (let p = 0; p < passes; p++) {
       const lo = Math.max(0, p - Math.max(0, passes - s.audioPasses))
       const hi = Math.min(s.audioPasses - 1, p + Math.max(0, s.audioPasses - passes))
       let beat = 0
-      for (const b of bars) {
+      for (const [k, b] of bars.entries()) {
+        written.push(first + k)
         const ok: number[] = []
         for (let a = lo; a <= hi; a++) ok.push(s.at + a * passBeats + beat)
         truth.push(ok)
@@ -122,7 +126,7 @@ function build(song: Song, sections: (Section & { audioPasses: number })[], opts
     guitar.join(' |\n') + ' |',
     ...(opts.bass ? [`\\track "Bass"`, `\\staff {tabs}`, `\\tuning (g2 d2 a1 e1)`, bass.join(' |\n') + ' |'] : []),
   ].join('\n')
-  return { tex, truth }
+  return { tex, truth, written }
 }
 
 const dir = process.argv[2]
@@ -144,11 +148,12 @@ for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
     messy: [withRepeat(withRepeat(base.slice(1), song.dropPass), song.extraPass), { ...song.transposed, bass: true }],
   }
   for (const [variant, [secs, opts]] of Object.entries(variants)) {
-    const { tex, truth } = build(song, secs, opts)
+    const { tex, truth, written } = build(song, secs, opts)
     const score = alphaTab.importer.ScoreLoader.loadAlphaTex(tex, new alphaTab.Settings())
     const bytes = new alphaTab.exporter.Gp7Exporter().export(score, new alphaTab.Settings())
     fs.writeFileSync(path.join(dir, 'out', `${name}.${variant}.gp`), bytes)
     fs.writeFileSync(path.join(dir, 'out', `${name}.${variant}.truth.json`), JSON.stringify(truth))
+    fs.writeFileSync(path.join(dir, 'out', `${name}.${variant}.written.json`), JSON.stringify(written))
   }
   console.log(`${name}: ${Object.keys(variants).length} variants`)
 }

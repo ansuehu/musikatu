@@ -33,6 +33,8 @@ export interface AlignParams {
   jump: number
   /** Added when jumping to a bar that doesn't start a block. */
   jumpAny: number
+  /** Added when jumping further than the neighbouring section (in playing order): recordings repeat or skip nearby. */
+  jumpFar: number
   /** Leaving the tab for a gap in the middle, and coming back from one. Before the tab starts and after it ends, gaps are free. */
   gapIn: number
   gapOut: number
@@ -51,12 +53,20 @@ export const DEFAULT_PARAMS: AlignParams = {
   skip: 1.5,
   jump: 3,
   jumpAny: 3,
+  jumpFar: 4,
   gapIn: 3,
   gapOut: 3,
   gapEmit: -0.3,
   edgeEmit: 0,
   bass: 0.05,
   downbeat: 0.3,
+}
+
+/** How the played tab is divided: per played bar, whether it starts a block and which section run it is in. */
+export interface Structure {
+  blockStart: boolean[]
+  /** Index of the run of bars with the same section name, in playing order (repeat passes share one). */
+  part: number[]
 }
 
 /** A bar the user placed by hand: played bar `played` starts on beat `beat`. */
@@ -162,19 +172,20 @@ export class Emissions {
 }
 
 /**
- * Best path for one transposition. `blockStart[p]`: played bar p starts a block (cheap jump target).
- * With `keepPath` false only the score is computed. `forbid` (beat → tab unit) rules out single
- * placements, for measuring how much worse the best alternative is.
+ * Best path for one transposition. Jumps go to block starts (cheaply when the block is in the same or a
+ * neighbouring section).
+ * With `keepPath` false only the score is computed. `forbid` (beat → tab units) rules out placements,
+ * for measuring how much worse the best alternative is.
  */
 export function viterbi(
   tab: TabUnits,
   em: Emissions,
-  blockStart: boolean[],
+  structure: Structure,
   downbeats: number[],
   params: AlignParams,
   anchors: Anchor[],
   keepPath: boolean,
-  forbid?: Map<number, number>,
+  forbid?: Map<number, number[]>,
 ): { score: number; path: Int32Array | null } {
   const U = em.U
   const T = em.T
@@ -191,6 +202,11 @@ export function viterbi(
   for (const d of downbeats) if (d >= 0 && d < T) down[d] = 1
   const forced = new Map<number, number>()
   for (const a of anchors) if (a.played >= 0 && a.played < P && a.beat >= 0 && a.beat < T) forced.set(a.beat, tab.offset[a.played])
+  const { blockStart, part } = structure
+  const parts = part.length ? part[part.length - 1] + 1 : 0
+  // best bar end in each section run
+  const partBest = new Float64Array(parts)
+  const partAt = new Int32Array(parts)
   const extra = (p: number) => (blockStart[p] ? 0 : params.jumpAny)
   const entry = (p: number) => (p === 0 ? 0 : params.jump + extra(p))
 
@@ -208,11 +224,18 @@ export function viterbi(
       // best bar end, for jumps and for leaving into a gap
       let bestEnd = NEG
       let bestEndState = -1
-      for (let p = 0; p < P; p++)
-        if (dp[endOf(p)] > bestEnd) {
-          bestEnd = dp[endOf(p)]
-          bestEndState = endOf(p)
+      partBest.fill(NEG)
+      for (let p = 0; p < P; p++) {
+        const e = endOf(p)
+        if (dp[e] > bestEnd) {
+          bestEnd = dp[e]
+          bestEndState = e
         }
+        if (dp[e] > partBest[part[p]]) {
+          partBest[part[p]] = dp[e]
+          partAt[part[p]] = e
+        }
+      }
       for (let g = 0; g < U; g++) {
         let best = dp[g] - params.stay
         let from = g
@@ -229,8 +252,9 @@ export function viterbi(
           const cands: [number, number][] = [
             [dp[HEAD] - entry(p), HEAD],
             [dp[GAP] - params.gapOut - extra(p), GAP],
-            [bestEnd - params.jump - extra(p), bestEndState],
+            [bestEnd - params.jump - params.jumpFar - extra(p), bestEndState],
           ]
+          for (let k = Math.max(0, part[p] - 1); k <= Math.min(parts - 1, part[p] + 1); k++) cands.push([partBest[k] - params.jump - extra(p), partAt[k]])
           for (const [v, s] of cands)
             if (v > best) {
               best = v
@@ -255,8 +279,7 @@ export function viterbi(
     }
     const f = forced.get(t)
     if (f !== undefined) for (let g = 0; g < S; g++) if (g !== f) dp[g] = NEG
-    const x = forbid?.get(t)
-    if (x !== undefined) dp[x] = NEG
+    for (const x of forbid?.get(t) ?? []) dp[x] = NEG
   }
   let s = 0
   for (let g = 1; g < S; g++) if (dp[g] > dp[s]) s = g
@@ -278,7 +301,7 @@ export function viterbi(
 export function align(
   tab: TabUnits,
   audio: AudioBeats,
-  blockStart: boolean[],
+  structure: Structure,
   options: { params?: Partial<AlignParams>; anchors?: Anchor[]; shifts?: number[]; norm?: Norm } = {},
 ): AlignResult {
   const params = { ...DEFAULT_PARAMS, ...options.params }
@@ -289,10 +312,10 @@ export function align(
   let best: { shift: number; score: number; em: Emissions } | null = null
   shifts.forEach((shift, i) => {
     const em = ems[i].normalise(norm)
-    const { score } = viterbi(tab, em, blockStart, audio.downbeats, params, anchors, false)
+    const { score } = viterbi(tab, em, structure, audio.downbeats, params, anchors, false)
     if (!best || score > best.score) best = { shift, score, em }
   })
   const { shift, score, em } = best!
-  const path = viterbi(tab, em, blockStart, audio.downbeats, params, anchors, true).path!
+  const path = viterbi(tab, em, structure, audio.downbeats, params, anchors, true).path!
   return { path, shift, score, em, norm }
 }

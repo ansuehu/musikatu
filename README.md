@@ -13,6 +13,7 @@ A desktop workbench for transcribing music by ear: slow it down, loop it, see wh
   - a whole-song chord chart you can edit;
   - export as text, bar by bar.
 - **Beats and bars:** automatic tempo, bars and a metronome; loop bars N–M, snap selections to beats.
+- **Guitar tabs:** open a Guitar Pro (.gp3/.gp4/.gp5/.gpx/.gp), MusicXML or alphaTex tab and it lines itself up with the recording: repeats are written out, intros or repeats the tab leaves out are skipped, and a capo or different tuning is found. The tab scrolls with the playhead and shows the strings and frets sounding; click a bar to go there, Shift-click to loop bars, and drag a bar line (or **Bar line here**) to fix the sync. Poorly matched sections are marked. See `scripts/tab-eval/` for how well it lines up.
 - **Audio → MIDI:** transcribe any instrument to a piano roll, play it along, and export MIDI that lines up with the bars. Transcribed notes also sharpen the chord chart and the live chord guess.
 - **Practice:**
   - a count-in before playback;
@@ -50,6 +51,8 @@ The stem separation model (136 MB) is downloaded from inside the app the first t
 | Notes → MIDI | [Basic Pitch](https://github.com/spotify/basic-pitch) (Spotify) | Apache-2.0 |
 
 Inference runs with ONNX Runtime in a background process.
+
+Tab files are read with [alphaTab](https://github.com/CoderLine/alphaTab) (MPL-2.0), unmodified, loaded only when a tab is opened.
 
 ## Branches
 

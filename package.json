@@ -17,6 +17,7 @@
     "install:linux": "npm run dist:dir && bash scripts/install-linux.sh"
   },
   "devDependencies": {
+    "@coderline/alphatab": "^1.8.4",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -122,7 +123,6 @@
     ]
   },
   "dependencies": {
-    "@coderline/alphatab": "^1.8.4",
     "onnxruntime-node": "^1.30.0"
   },
   "desktopName": "musikatu.desktop",

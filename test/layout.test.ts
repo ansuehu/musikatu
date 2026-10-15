@@ -3,14 +3,14 @@ import assert from 'node:assert/strict'
 import { cellWidth, DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, setCellWidth, setSize } from '../src/layout/layout.ts'
 
 test('defaults: sidebar, bottom strip, and the rest in the Tools window', () => {
-  assert.deepEqual(panelsIn(DEFAULT_LAYOUT, 'sidebar'), ['stems', 'chords', 'notes', 'beats'])
+  assert.deepEqual(panelsIn(DEFAULT_LAYOUT, 'sidebar'), ['stems', 'chords', 'notes', 'beats', 'tab'])
   assert.deepEqual(panelsIn(DEFAULT_LAYOUT, 'tools'), ['practice', 'metronome', 'eq', 'mix'])
   assert.deepEqual(panelsIn(DEFAULT_LAYOUT, 'bottom'), ['keyboard', 'chordGuess', 'guitar'])
 })
 
 test('dropping a panel before another one inserts it there and selects it', () => {
   const l = movePanel(DEFAULT_LAYOUT, 'eq', 'sidebar', 'chords')
-  assert.deepEqual(panelsIn(l, 'sidebar'), ['stems', 'eq', 'chords', 'notes', 'beats'])
+  assert.deepEqual(panelsIn(l, 'sidebar'), ['stems', 'eq', 'chords', 'notes', 'beats', 'tab'])
   assert.equal(l.tab, 'eq')
   assert.deepEqual(panelsIn(l, 'tools'), ['practice', 'metronome', 'mix'])
 })

@@ -3,7 +3,7 @@
  * or as a tab of the Tools window, a single movable, tabbed window like a settings dialog.
  */
 
-export type PanelId = 'stems' | 'chords' | 'notes' | 'beats' | 'practice' | 'metronome' | 'eq' | 'mix' | 'keyboard' | 'chordGuess' | 'guitar'
+export type PanelId = 'stems' | 'chords' | 'notes' | 'beats' | 'tab' | 'practice' | 'metronome' | 'eq' | 'mix' | 'keyboard' | 'chordGuess' | 'guitar'
 export type Place = 'sidebar' | 'bottom' | 'tools'
 
 export interface PanelMeta {
@@ -18,6 +18,7 @@ export const PANELS: PanelMeta[] = [
   { id: 'chords', title: 'Chords', bottomWidth: 340 },
   { id: 'notes', title: 'Notes', bottomWidth: 330 },
   { id: 'beats', title: 'Beats', bottomWidth: 330 },
+  { id: 'tab', title: 'Tab', bottomWidth: 'flex' },
   { id: 'practice', title: 'Practice', bottomWidth: 330 },
   { id: 'metronome', title: 'Metronome', bottomWidth: 320 },
   { id: 'eq', title: 'EQ', bottomWidth: 340 },
@@ -69,6 +70,7 @@ export const DEFAULT_LAYOUT: Layout = {
     chords: 'sidebar',
     notes: 'sidebar',
     beats: 'sidebar',
+    tab: 'sidebar',
     practice: 'tools',
     metronome: 'tools',
     eq: 'tools',

@@ -36,6 +36,8 @@ export interface ProjectData {
   beatGrid?: import('./rhythm/grid').BeatGrid
   /** Transcribed notes per source. */
   noteTracks?: import('./transcription/types').NoteTrack[]
+  /** Guitar tab lined up with the song (the file, its sync and bars placed by hand). */
+  tab?: import('./tabs/useTabSync').TabProject
 }
 
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Breakdown', 'Outro']

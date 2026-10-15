@@ -23,9 +23,12 @@ import { loadTab } from '../../src/tabs/alphatab.ts'
 import type { AudioBeats } from '../../src/tabs/align.ts'
 import { QUALITIES } from '../../src/analysis/notes.ts'
 import type { ChordSegment } from '../../src/analysis/chordTimeline.ts'
-import { regularBeats, syncTab, type TabSync } from '../../src/tabs/sync.ts'
+import { barAt, regularBeats, syncTab, type TabSync } from '../../src/tabs/sync.ts'
+import { expandBars } from '../../src/tabs/expand.ts'
+import type { TabScore } from '../../src/tabs/model.ts'
 
-const SR = 44100
+// the app analyses at the file's own rate; SR=48000 checks another
+const SR = Number(process.env.SR ?? 44100)
 const [evalDir, tabsDir] = process.argv.slice(2, 4)
 const onlyVariants = process.argv.slice(4)
 const outDir = path.join(tabsDir, 'out')
@@ -95,6 +98,8 @@ function beatIndexOf(beats: number[], pos: number): number {
 }
 
 interface Result {
+  /** Bars where the panel shows the right music (the true bar or one with the same notes) within ½ beat. */
+  rightMusic: number
   errMs: number[]
   errBeats: number[]
   unplaced: number
@@ -107,13 +112,27 @@ interface Result {
   confBad: number[]
 }
 
-function score(sync: TabSync, truth: number[][], beats: number[]): Result {
+function score(sync: TabSync, truth: number[][], beats: number[], tab: TabScore): Result {
+  // what each played bar sounds like: its notes in every track
+  const played = expandBars(tab.bars)
+  const content = played.map((p) => JSON.stringify(tab.tracks.map((t) => (t.bars[p.bar] ?? []).map((b) => [b.start, b.duration, b.notes.map((n) => n.midi)]))))
+  let rightMusic = 0
+  // confidence of what the panel shows at each true bar start, split by whether the music is right
+  const confOk: number[] = []
+  const confBad: number[] = []
+  truth.forEach((ok, p) => {
+    if (!ok.length) return
+    // a little into the bar's first beat, so a bar starting a few ms late still counts
+    const k = ok[0]
+    const b = sync.bars[barAt(sync, k + 1 < beats.length ? (beats[k] + beats[k + 1]) / 2 : beats[k] + 1)]
+    const right = !!b && content[b.played] === content[p] && Math.abs(beatIndexOf(beats, b.start) - ok[0]) < 0.5
+    if (right) rightMusic++
+    if (b) (right ? confOk : confBad).push(sync.sections[b.section].confidence)
+  })
   const errMs: number[] = []
   const errBeats: number[] = []
   let unplaced = 0
   let expected = 0
-  const confOk: number[] = []
-  const confBad: number[] = []
   truth.forEach((ok, p) => {
     if (!ok.length) return
     expected++
@@ -134,11 +153,9 @@ function score(sync: TabSync, truth: number[][], beats: number[]): Result {
       }
     errBeats.push(best)
     errMs.push(bestMs)
-    const conf = sync.sections[placed[0].section].confidence
-    ;(best < 0.5 ? confOk : confBad).push(conf)
   })
   const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN)
-  return { errMs, errBeats, unplaced, expected, shift: sync.shift, factor: sync.factor, meanConfOk: mean(confOk), meanConfBad: mean(confBad), confOk, confBad }
+  return { rightMusic, errMs, errBeats, unplaced, expected, shift: sync.shift, factor: sync.factor, meanConfOk: mean(confOk), meanConfBad: mean(confBad), confOk, confBad }
 }
 
 /** Deterministic random numbers, so runs compare. */
@@ -243,11 +260,11 @@ for (const song of songs) {
       const anchors = process.env.ANCHOR ? [{ played: first, pos: truthBeats[truth[first][0]] }] : []
       const sync = syncTab(tab, { beats, audio, anchors, params: JSON.parse(process.env.PARAMS ?? '{}') })
       const ms = performance.now() - t0
-      const r = score(sync, truth, truthBeats)
+      const r = score(sync, truth, truthBeats, tab)
       rows.push({ song, source, variant, r })
       const f1 = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : '  - ')
       console.log(
-        `${song.slice(0, 26).padEnd(27)}${source.padEnd(19)}${variant.padEnd(12)} median ${q(r.errMs, 0.5).toFixed(0).padStart(5)} ms ${f1(q(r.errBeats, 0.5))} b | p95 ${q(r.errMs, 0.95).toFixed(0).padStart(6)} ms ${f1(q(r.errBeats, 0.95)).padStart(6)} b | ≤½ beat ${((100 * r.errBeats.filter((e) => e < 0.5).length) / r.expected).toFixed(1).padStart(5)}% | unplaced ${r.unplaced}/${r.expected} | shift ${r.shift} ×${r.factor} | conf ok ${f1(r.meanConfOk)} bad ${f1(r.meanConfBad)} | ${ms.toFixed(0)} ms`,
+        `${song.slice(0, 26).padEnd(27)}${source.padEnd(19)}${variant.padEnd(12)} median ${q(r.errMs, 0.5).toFixed(0).padStart(5)} ms ${f1(q(r.errBeats, 0.5))} b | p95 ${q(r.errMs, 0.95).toFixed(0).padStart(6)} ms ${f1(q(r.errBeats, 0.95)).padStart(6)} b | ≤½ beat ${((100 * r.errBeats.filter((e) => e < 0.5).length) / r.expected).toFixed(1).padStart(5)}% | right music ${((100 * r.rightMusic) / r.expected).toFixed(1).padStart(5)}% | unplaced ${r.unplaced}/${r.expected} | shift ${r.shift} ×${r.factor} | conf ok ${f1(r.meanConfOk)} bad ${f1(r.meanConfBad)} | ${ms.toFixed(0)} ms`,
       )
     }
   }
@@ -261,13 +278,13 @@ for (const source of wanted) {
   const b = rs.flatMap((r) => r.r.errBeats)
   const expected = rs.reduce((a, r) => a + r.r.expected, 0)
   console.log(
-    `${source.padEnd(19)} median ${q(ms, 0.5).toFixed(0)} ms / ${q(b, 0.5).toFixed(2)} beats, p95 ${q(ms, 0.95).toFixed(0)} ms / ${q(b, 0.95).toFixed(2)} beats, within ½ beat ${((100 * b.filter((e) => e < 0.5).length) / expected).toFixed(1)}%`,
+    `${source.padEnd(19)} median ${q(ms, 0.5).toFixed(0)} ms / ${q(b, 0.5).toFixed(2)} beats, p95 ${q(ms, 0.95).toFixed(0)} ms / ${q(b, 0.95).toFixed(2)} beats, within ½ beat ${((100 * b.filter((e) => e < 0.5).length) / expected).toFixed(1)}%, right music ${((100 * rs.reduce((a, r) => a + r.r.rightMusic, 0)) / expected).toFixed(1)}%`,
   )
 }
 
 // how well the confidence flags misplaced bars: share of bars below each threshold
 const ok = rows.flatMap((r) => r.r.confOk)
 const bad = rows.flatMap((r) => r.r.confBad)
-console.log(`\nConfidence (${ok.length} bars placed right, ${bad.length} wrong):`)
+console.log(`\nConfidence of what the panel shows at each bar (${ok.length} with the right music, ${bad.length} wrong):`)
 for (const th of [0.2, 0.3, 0.4, 0.5])
   console.log(`  below ${th}: ${((100 * bad.filter((c) => c < th).length) / Math.max(1, bad.length)).toFixed(0)}% of wrong bars, ${((100 * ok.filter((c) => c < th).length) / ok.length).toFixed(0)}% of right ones`)

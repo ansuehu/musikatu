@@ -30,6 +30,8 @@ import { mergeShort, segmentAt, type Chord } from './analysis/chordTimeline'
 import { chordName, parseChordName } from './analysis/notes'
 import type { ChordLane } from './components/WaveformView'
 import { GridPanel } from './components/GridPanel'
+import { TabPanel } from './components/TabPanel'
+import { useTabSync, type TabProject } from './tabs/useTabSync'
 import type { MetronomePrefs } from './components/MetronomeEditor'
 import { DEFAULT_METRONOME } from './dsp/Metronome'
 import { useBeatGrid } from './rhythm/useBeatGrid'
@@ -130,6 +132,7 @@ export default function App() {
   const [chordTrack, setChordTrack] = useState<ChordTrack | null>(null)
   const [beatGrid, setBeatGrid] = useState<BeatGrid | null>(null)
   const [noteTracks, setNoteTracks] = useState<NoteTrack[]>([])
+  const [tabProject, setTabProject] = useState<TabProject | null>(null)
   const [selectedNotes, setSelectedNotes] = useState<Set<NoteKey>>(new Set())
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null)
   const [editMarkerRequest, setEditMarkerRequest] = useState<{ id: string; n: number } | null>(null)
@@ -238,10 +241,10 @@ export default function App() {
 
   useEffect(() => {
     if (!projectId) return
-    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined, noteTracks }
+    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined, noteTracks, tab: tabProject ?? undefined }
     const t = setTimeout(() => void saveProject(projectId, data), 400)
     return () => clearTimeout(t)
-  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid, noteTracks])
+  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid, noteTracks, tabProject])
 
   // ---- view (zoom / scroll) ----
   const clampView = useCallback(
@@ -298,6 +301,7 @@ export default function App() {
         setChordTrack(saved?.chordTrack ?? null)
         setBeatGrid(saved?.beatGrid ?? null)
         setNoteTracks(saved?.noteTracks ?? [])
+        setTabProject(saved?.tab ?? null)
         setSelectedNotes(new Set())
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
@@ -573,6 +577,21 @@ export default function App() {
       if (r) engine.seek(r.start)
     },
     [beatGrid, engine, length, sampleRate],
+  )
+
+  // ---- guitar tab lined up with the recording ----
+  const tabCtl = useTabSync({ project: tabProject, onProject: setTabProject, buffer: file?.buffer ?? null, stems, grid: beatGrid, a4 })
+  const loopRange = useCallback(
+    (start: number, end: number) => {
+      if (!engine) return
+      setSelection({ start, end })
+      setActiveLoop(null)
+      setLoopOn(true)
+      engine.seek(start)
+      const span = detailWidth * view.spp
+      if (start < view.start || start > view.start + span) setView({ start: start - span * 0.05, spp: view.spp })
+    },
+    [engine, detailWidth, view, setView],
   )
 
   // ---- practice: count-in and speed trainer ----
@@ -1025,6 +1044,27 @@ if (m) engine?.seek(m.pos)
         )
       case 'beats':
         return <MarkersTab {...toolProps} />
+      case 'tab':
+        return (
+          <TabPanel
+            project={tabProject}
+            score={tabCtl.score}
+            status={tabCtl.status}
+            hasFile={!!file}
+            hasGrid={!!beatGrid}
+            songLength={length}
+            getPosition={getPosition}
+            selection={selection}
+            onOpen={(f) => void tabCtl.open(f)}
+            onRemove={() => setTabProject(null)}
+            onTrack={(track) => setTabProject((t) => (t ? { ...t, track } : t))}
+            onResync={tabCtl.resync}
+            onPin={tabCtl.pin}
+            onClearPins={tabCtl.clearPins}
+            onSeek={seek}
+            onLoop={loopRange}
+          />
+        )
       case 'practice':
         return <LoopsTab {...toolProps} />
       case 'eq':

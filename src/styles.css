@@ -2103,3 +2103,58 @@ body.resizing-ne * {
   background: color-mix(in srgb, var(--chip) 18%, transparent);
   color: var(--text);
 }
+
+/* ---------- guitar tab ---------- */
+.gtab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+.gtab-panel .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gtab-actions,
+.gtab-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.gtab-actions {
+  flex: none;
+}
+.gtab-toolbar .select {
+  height: 24px;
+  max-width: 140px;
+}
+.gtab-strip {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 130px;
+  max-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  touch-action: none;
+}
+.gtab-now {
+  min-height: 34px;
+}
+.gtab-frets {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.gtab-panel .bad {
+  color: var(--danger);
+}
+.gtab-panel .unsure {
+  color: var(--loop);
+}
+.gtab-summary {
+  margin: 0;
+}

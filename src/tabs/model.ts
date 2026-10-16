@@ -70,6 +70,8 @@ export interface TabBar {
   /** Section name starting at this bar ("Chorus"), or null. */
   section: string | null
   directions: TabDirection[]
+  /** Tempo at the start of the bar, quarter notes per minute (changes inside a bar aren't kept). */
+  tempo: number
 }
 
 export interface TabScore {

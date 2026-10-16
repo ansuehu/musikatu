@@ -151,13 +151,16 @@ const sources: Record<string, () => Float32Array> = {
   mix: () => decode(src),
   stems: () => sum(['guitar', 'bass'].map((s) => path.join(dir, 'stems', song, `${s}.wav`))),
 }
-const trackSets: Record<string, number[] | undefined> = { 'all tracks': undefined }
+// bars on tracked beats only, and with the tempo lock (bars off the tab's tempo line moved onto it);
+// neither uses the drums, so the drum-based truth stays independent
+const trackSets: Record<string, boolean> = { 'beats only': false, 'tempo lock': true }
 for (const [name, mono] of Object.entries(sources)) {
   const audio = mono()
   const h = beatHarmony(audio, SR, grid.beats)
-  for (const [tracksName, tracks] of Object.entries(trackSets)) {
+  for (const [tracksName, tempoLock] of Object.entries(trackSets)) {
     const t0 = performance.now()
-    const sync: TabSync = syncTab(score, { beats: grid.beats, audio: { chroma: h.chroma, level: h.level, bass: h.bass, downbeats: grid.downbeats }, tracks })
+    const sync: TabSync = syncTab(score, { beats: grid.beats, sampleRate: SR, audio: { chroma: h.chroma, level: h.level, bass: h.bass, downbeats: grid.downbeats }, tempoLock })
+
     const ms = performance.now() - t0
     const err: number[] = []
     let unplaced = 0
@@ -172,7 +175,7 @@ for (const [name, mono] of Object.entries(sources)) {
     const within = err.filter((e) => e < (spacing * 1000) / 2).length
     const f = (v: number) => `${v.toFixed(0)} ms / ${(v / 1000 / spacing).toFixed(2)} beats`
     console.log(
-      `${name.padEnd(6)} ${tracksName}: bar start error median ${f(q(err, 0.5))}, p95 ${f(q(err, 0.95))}, max ${f(Math.max(...err))}; within ½ beat ${((100 * within) / scored).toFixed(1)}%; unplaced ${unplaced}/${scored} (bars with drums; of the ${drumless.size} without, ${drumlessPlaced} placed); shift ${sync.shift} ×${sync.factor}; ${ms.toFixed(0)} ms`,
+      `${name.padEnd(6)} ${tracksName}: bar start error median ${f(q(err, 0.5))}, p95 ${f(q(err, 0.95))}, max ${f(Math.max(...err))}; within ½ beat ${((100 * within) / scored).toFixed(1)}%; unplaced ${unplaced}/${scored} (bars with drums; of the ${drumless.size} without, ${drumlessPlaced} placed); shift ${sync.shift} ×${sync.factor}; ${sync.tempoLocked} bars moved by the tempo lock; ${ms.toFixed(0)} ms`,
     )
     if (process.env.BARS)
       played.forEach((pb, p) => {

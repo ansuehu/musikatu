@@ -66,7 +66,7 @@ test('files that are not tabs are refused with a message', () => {
 
 // ---- writing out repeats ----
 
-const bar = (o: Partial<TabBar> = {}): TabBar => ({ num: 4, den: 4, ticks: 3840, repeatStart: false, repeatEnd: 0, endings: 0, section: null, directions: [], ...o })
+const bar = (o: Partial<TabBar> = {}): TabBar => ({ num: 4, den: 4, ticks: 3840, repeatStart: false, repeatEnd: 0, endings: 0, section: null, directions: [], tempo: 120, ...o })
 
 test('repeats are written out, with an implicit start at the beginning', () => {
   assert.deepEqual(order([bar(), bar({ repeatEnd: 2 }), bar()]), [1, 2, 1, 2, 3])
@@ -201,7 +201,7 @@ test('a tab that matches the recording is placed bar for bar', () => {
     { name: 'Chorus', bars: CHORUS },
   ])
   const { beats, audio } = recording([...VERSE, ...VERSE, ...CHORUS])
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   assert.equal(sync.shift, 0)
   assert.equal(sync.factor, 1)
   assert.deepEqual(
@@ -218,7 +218,7 @@ test('an intro the tab leaves out is skipped', () => {
     { name: 'Chorus', bars: CHORUS },
   ])
   const { beats, audio } = recording([...BRIDGE, ...VERSE, ...CHORUS])
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   assert.equal(barAt(sync, beats[2]), -1)
   assert.deepEqual(
     sync.bars.map((b) => beats.indexOf(b.start)),
@@ -229,7 +229,7 @@ test('an intro the tab leaves out is skipped', () => {
 test('an outro the tab leaves out is left unplaced', () => {
   const tab = makeTab([{ name: 'Verse', bars: VERSE }])
   const { beats, audio } = recording([...VERSE, ...BRIDGE])
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   assert.deepEqual(
     sync.bars.map((b) => beats.indexOf(b.start)),
     [0, 4, 8, 12],
@@ -243,7 +243,7 @@ test('a repeat the recording plays fewer times than written is skipped', () => {
     { name: 'Chorus', bars: CHORUS },
   ])
   const { beats, audio } = recording([...VERSE, ...VERSE, ...CHORUS])
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   const starts = startBeats(sync, beats)
   // the chorus (played bars 12–15) comes right after two verses
   assert.deepEqual(
@@ -259,7 +259,7 @@ test('a repeat the recording plays more times than written is followed', () => {
     { name: 'Chorus', bars: CHORUS },
   ])
   const { beats, audio } = recording([...VERSE, ...VERSE, ...VERSE, ...CHORUS])
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   assert.equal(sync.bars.length, 16)
   assert.deepEqual(
     sync.bars.slice(12).map((b) => [b.played, beats.indexOf(b.start)]),
@@ -277,7 +277,7 @@ test('tempo drift is followed beat by beat', () => {
   const tab = makeTab([{ name: 'Verse', bars: [...VERSE, ...CHORUS, ...VERSE] }])
   // from 0.5 s to about 0.69 s per beat over the song
   const { beats, audio } = recording([...VERSE, ...CHORUS, ...VERSE], { drift: 0.004 })
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   assert.deepEqual(
     sync.bars.map((b) => beats.indexOf(b.start)),
     Array.from({ length: 12 }, (_, p) => 4 * p),
@@ -289,7 +289,7 @@ test('tempo drift is followed beat by beat', () => {
 test('a tab in another key (capo, tuning) is transposed to match', () => {
   const tab = makeTab([{ name: 'Verse', bars: [...VERSE, ...CHORUS] }], -2)
   const { beats, audio } = recording([...VERSE, ...CHORUS])
-  const sync = syncTab(tab, { beats, audio })
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
   assert.equal(sync.shift, 2)
   assert.deepEqual(
     sync.bars.map((b) => beats.indexOf(b.start)),
@@ -303,7 +303,7 @@ test('a tracker counting at double speed is detected', () => {
   // every beat split in two, each half with the same harmony
   const half = beats.flatMap((b, i) => [b, b + Math.round(((beats[i + 1] ?? b + 500) - b) / 2)])
   const doubled: AudioBeats = { chroma: audio.chroma.flatMap((c) => [c, c]), level: new Float32Array(half.length).fill(0.5), bass: audio.bass.flatMap((b) => [b, b]), downbeats: audio.downbeats.map((d) => 2 * d) }
-  const sync = syncTab(tab, { beats: half, audio: doubled })
+  const sync = syncTab(tab, { beats: half, sampleRate: SR, audio: doubled })
   assert.equal(sync.factor, 2)
   assert.deepEqual(
     sync.bars.map((b) => half.indexOf(b.start) / 2),
@@ -318,10 +318,10 @@ test('a bar placed by hand stays where it was put, and the rest follow', () => {
     { name: 'Chorus', bars: CHORUS },
   ])
   const { beats, audio } = recording([...VERSE, ...VERSE, ...CHORUS])
-  const free = syncTab(tab, { beats, audio })
+  const free = syncTab(tab, { beats, sampleRate: SR, audio })
   const freeVerse = free.bars.find((b) => b.played === 0)!
   const other = beats.indexOf(freeVerse.start) === 0 ? 16 : 0
-  const pinned = syncTab(tab, { beats, audio, anchors: [{ played: 0, pos: beats[other] + 30 }] })
+  const pinned = syncTab(tab, { beats, sampleRate: SR, audio, anchors: [{ played: 0, pos: beats[other] + 30 }] })
   const first = pinned.bars.find((b) => b.played === 0 && Math.abs(b.start - beats[other]) < 100)!
   assert.ok(first, 'verse placed at the anchor')
   assert.equal(first.start, beats[other] + 30)
@@ -357,6 +357,7 @@ test('bars map to times and back', () => {
     factor: 1,
     tracks: [0],
     missing: [],
+    tempoLocked: 0,
   }
   assert.equal(barAt(sync, 999), -1)
   assert.equal(barAt(sync, 1000), 0)
@@ -375,4 +376,40 @@ test('the busiest guitar track is shown first', () => {
   const track = (name: string, strings: number, notes: number, percussion = false) => ({ name, tuning: Array(strings).fill(40), capo: 0, percussion, bars: [[beat(notes)]] })
   const score: TabScore = { title: '', artist: '', tempo: 120, bars: [bar()], tracks: [track('Clean', 6, 1), track('Bass', 4, 9), track('Drums', 0, 0, true), track('Rhythm', 6, 5)] }
   assert.equal(mainTrack(score), 3)
+})
+
+test('a bar the tracker put half a beat late is moved back onto the tab tempo', () => {
+  const chords = [...VERSE, ...CHORUS, ...VERSE, ...CHORUS, ...VERSE]
+  const tab = makeTab([{ name: 'Song', bars: chords }])
+  const { beats, audio } = recording(chords)
+  // the tracker sat on the off-beats through bar 10 (beats 36–39)
+  const tracked = beats.map((b, i) => (i >= 36 && i < 40 ? b + 250 : b))
+  const off = syncTab(tab, { beats: tracked, sampleRate: SR, audio, tempoLock: false })
+  const on = syncTab(tab, { beats: tracked, sampleRate: SR, audio })
+  const bar9 = (s: TabSync) => s.bars.find((b) => b.played === 9)!
+  assert.equal(bar9(off).start, beats[36] + 250)
+  assert.ok(Math.abs(bar9(on).start - beats[36]) <= 2, `moved to ${bar9(on).start}, true start ${beats[36]}`)
+  assert.equal(on.tempoLocked, 1)
+  // its beats are even again, and the bar before ends where it starts
+  assert.deepEqual(bar9(on).beats.map((b) => Math.round((b - beats[36]) / 500)), [0, 1, 2, 3])
+  assert.equal(on.bars.find((b) => b.played === 8)!.end, bar9(on).start)
+})
+
+test('a freely played recording is left on its beats', () => {
+  const chords = [...VERSE, ...CHORUS, ...VERSE, ...CHORUS, ...VERSE]
+  const tab = makeTab([{ name: 'Song', bars: chords }])
+  const { beats, audio } = recording(chords)
+  // rubato: the tempo swells and relaxes by ±10% every eight bars
+  let t = beats[0]
+  const free = beats.map((_, i) => {
+    const at = t
+    t += 500 * (1 + 0.1 * Math.sin((2 * Math.PI * i) / 32))
+    return Math.round(at)
+  })
+  const sync = syncTab(tab, { beats: free, sampleRate: SR, audio })
+  assert.equal(sync.tempoLocked, 0)
+  assert.deepEqual(
+    sync.bars.map((b) => free.indexOf(b.start)),
+    Array.from({ length: 20 }, (_, p) => 4 * p),
+  )
 })

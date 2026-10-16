@@ -24,6 +24,7 @@ export function loadTab(bytes: Uint8Array): TabScore {
 
 export function fromAlphaTab(score: Score): TabScore {
   const Direction = alphaTab.model.Direction
+  let tempo = score.tempo
   const bars: TabBar[] = score.masterBars.map((mb) => ({
     num: mb.timeSignatureNumerator,
     den: mb.timeSignatureDenominator,
@@ -33,6 +34,7 @@ export function fromAlphaTab(score: Score): TabScore {
     endings: mb.alternateEndings,
     section: mb.section ? mb.section.text || mb.section.marker || 'Section' : null,
     directions: [...(mb.directions ?? [])].map((d) => Direction[d].replace(/^Target|^Jump/, '') as TabDirection),
+    tempo: (tempo = mb.tempoAutomations.find((a) => a.ratioPosition === 0)?.value ?? tempo),
   }))
   const tracks: TabTrack[] = score.tracks.map((t) => {
     const staff = t.staves[0]

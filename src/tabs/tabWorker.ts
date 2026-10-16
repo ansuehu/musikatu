@@ -16,7 +16,7 @@ scope.onmessage = (e: MessageEvent<TabJob>) => {
     const h = beatHarmony(job.mono, job.sampleRate, beats, { a4: job.a4 }, (f) => {
       if (f - last >= 0.05) post({ id: job.id, type: 'progress', fraction: 0.9 * (last = f) })
     })
-    const sync = syncTab(job.score, { beats, audio: { chroma: h.chroma, level: h.level, bass: h.bass, downbeats }, anchors: job.anchors })
+    const sync = syncTab(job.score, { beats, sampleRate: job.sampleRate, audio: { chroma: h.chroma, level: h.level, bass: h.bass, downbeats }, anchors: job.anchors })
     post({ id: job.id, type: 'synced', sync })
   } catch (err) {
     post({ id: job.id, type: 'error', message: String(err instanceof Error ? err.message : err) })

@@ -90,15 +90,30 @@ A full-band Guitar Pro tab:
 
 The band played to a click, so the truth comes from the tab. Its tempo map gives each bar's time, and its 1229 drum hits matched to the onsets of the drum stem give the offset. The fit is sharp: 1.55 at the best offset against 0.19 fifty ms off. Section by section the offset is either the song's or 86–88 ms earlier: section A, and everything from C' (around bar 122) to the end. That is a sixteenth note at 175 BPM, so the tab is a sixteenth note longer or shorter than the recording at those two points. The truth uses each bar's local offset. The 23 bars without drums nearby (most of the clean intro) are left out of the scores.
 
+Without the tempo lock (bars on tracked beats only):
+
 | Audio | Median error | p95 error | Max | Within ½ beat | Unplaced |
 |---|---|---|---|---|---|
 | guitar + bass stems | 15 ms (0.04 beats) | 293 ms (0.86 beats) | 382 ms | 88.1% | 0 of 160 |
 | mix | 15 ms (0.04 beats) | 194 ms (0.57 beats) | 505 ms | 85.6% | 4 of 160 |
-| mix, in the app (48 kHz, its own beat tracking) | 13 ms | 308 ms | | 86.3% | 3 of 160 |
 
-The sync takes about 2 s in a worker (3.9 s in the app, including reading the file). Almost all the misses are half a beat off (170–190 ms). That is the beat tracker: in these syncopated riffs it sometimes locks onto the off-beats, and 20 of the 160 true bar starts have no tracked beat within 60 ms. Since bars can only start on tracked beats, those bars land half a beat off. Lining bars up with the tab's note onsets, rather than with the tracked beats, would fix this, but it needs a truth that doesn't also come from onsets.
+Almost all of these misses are half a beat off (170–190 ms). That is the beat tracker: in these syncopated riffs it sometimes locks onto the off-beats, and 20 of the 160 true bar starts have no tracked beat within 60 ms. Since bars could only start on tracked beats, those bars landed half a beat off.
 
-Two changes came from this song. The tracker counted the 35-second clean intro (no drums) at half speed, so the grid repair now splits stretches whose spacing is about twice the song's beat. And the uniqueness part of the confidence now rules out the bar sounding within a beat of its place, not only starting exactly there; before, correct sections of this song scored as low as 0.02.
+**Tempo lock** (`src/tabs/tempo.ts`, on by default). The band played to a click and the tab follows the same tempo, so within a run of bars played in order, recording time is a straight line of tab time. Each bar is checked against a robust (Theil–Sen) line through its eight neighbours on each side, leaving the bar itself out. It is moved onto the line only when the neighbours sit within 0.08 beats of their line and the bar is more than a quarter beat off it. In a recording that doesn't keep the tab's tempo, the neighbours don't fit tightly and nothing moves (unit test with rubato). The lock uses neither drums nor onsets, so the drum-based truth stays independent.
+
+| Audio | Median error | p95 error | Max | Within ½ beat | Bars moved |
+|---|---|---|---|---|---|
+| guitar + bass stems | 12 ms (0.04 beats) | 96 ms (0.28 beats) | 181 ms | 98.1% | 27 |
+| mix | 13 ms (0.04 beats) | 105 ms (0.31 beats) | 267 ms | 95.0% | 27 |
+| mix, in the app (48 kHz, its own beat tracking) | 12 ms | 96 ms | | 96.9% (155 of 160) | |
+
+On the test songs (Wonderwall, Boulevard) every score is the same with and without the lock, and under all the beat-grid options.
+
+**Onsets didn't help.** Before the tempo lock, I tried moving each bar by up to 0.6 beats to where the onsets of the tab's guitars and bass best match the onsets heard in the recording (spectral flux), with neighbouring bars kept alike and a pull toward the beat grid. It changed little: 88.1% → 89.4% within ½ beat on stems, and 85.6% → 86.3% on the mix. At the bars that were half a beat off, the true position fitted the pitched onsets better in only 7 of 19 cases. Steady eighth-note riffs look the same half a beat later. The drums would settle it, but they are also what the truth is made from, so that couldn't be measured honestly, and the approach was dropped.
+
+The sync takes about 2 s in a worker (3.9 s in the app, including reading the file).
+
+Three changes came from this song: the tempo lock, and the two below. The tracker counted the 35-second clean intro (no drums) at half speed, so the grid repair now splits stretches whose spacing is about twice the song's beat. And the uniqueness part of the confidence now rules out the bar sounding within a beat of its place, not only starting exactly there; before, correct sections of this song scored as low as 0.02.
 
 ## What goes wrong
 

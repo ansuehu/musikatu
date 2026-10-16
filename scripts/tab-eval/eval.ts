@@ -13,7 +13,7 @@
  * the rest by up to ±30 ms before syncing; errors are still measured against the original beats.
  * BEAT_HALF=1 / BEAT_DOUBLE=1 give the sync every other beat / twice the beats (a tracker counting at
  * half or double speed).
- * ANCHOR=1 places the tab's first bar that the recording plays by hand (as a user would by dragging it).
+ * TEMPO_LOCK=0 turns the tempo lock off. ANCHOR=1 places the tab's first bar that the recording plays by hand (as a user would by dragging it).
  */
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -258,7 +258,7 @@ for (const song of songs) {
       const t0 = performance.now()
       const first = truth.findIndex((ok) => ok.length)
       const anchors = process.env.ANCHOR ? [{ played: first, pos: truthBeats[truth[first][0]] }] : []
-      const sync = syncTab(tab, { beats, audio, anchors, params: JSON.parse(process.env.PARAMS ?? '{}') })
+      const sync = syncTab(tab, { beats, sampleRate: SR, audio, anchors, tempoLock: process.env.TEMPO_LOCK !== '0', params: JSON.parse(process.env.PARAMS ?? '{}') })
       const ms = performance.now() - t0
       const r = score(sync, truth, truthBeats, tab)
       rows.push({ song, source, variant, r })

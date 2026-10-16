@@ -1,6 +1,7 @@
 import { align, DEFAULT_PARAMS, viterbi, type AlignParams, type AudioBeats, type Emissions, type Norm, type Structure } from './align.ts'
 import { expandBars, type PlayedBar } from './expand.ts'
 import { pitchedTracks, tabUnits, type TabUnits } from './features.ts'
+import { lockToTempo } from './tempo.ts'
 import type { TabScore } from './model.ts'
 
 /** One bar of the tab placed on the recording (bars are in recording order; a bar can appear twice). */
@@ -48,11 +49,14 @@ export interface TabSync {
   tracks: number[]
   /** Bars of the played tab the recording doesn't play. */
   missing: number[]
+  /** Bars moved onto the tab's tempo line (see tempo.ts). */
+  tempoLocked: number
 }
 
 export interface SyncInput {
   /** Tracked beats, samples. */
   beats: number[]
+  sampleRate: number
   audio: AudioBeats
   /** Tracks to match (default: every pitched track). */
   tracks?: number[]
@@ -61,6 +65,8 @@ export interface SyncInput {
   /** Restrict the transposition search (default: all 12). */
   shifts?: number[]
   factors?: number[]
+  /** Move bars that are off the tab's tempo line onto it (default on; see tempo.ts). */
+  tempoLock?: boolean
 }
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
@@ -180,6 +186,7 @@ export function syncTab(score: TabScore, input: SyncInput): TabSync {
     const alt = viterbi(tab, r.em, structure, input.audio.downbeats, params, anchors, false, forbid).score
     s.confidence *= 1 - Math.exp(-Math.max(0, r.score - alt) / UNIQUE_SCALE)
   }
+  if (input.tempoLock ?? true) out.tempoLocked = lockToTempo(out, score, played, input.sampleRate)
   // hand-placed bars start exactly where they were put
   for (const a of input.anchors ?? []) {
     const b = out.bars.find((b) => b.played === a.played && Math.abs(b.start - a.pos) < (b.end - b.start) * 2)
@@ -270,7 +277,7 @@ export function buildSync(played: PlayedBar[], tab: TabUnits, path: Int32Array, 
     s.confidence = sigmoid(2 * (m / k - 0.6)) * (s.jumped ? JUMP_DOUBT : 1)
   }
   const seen = new Set(bars.map((b) => b.played))
-  return { bars, sections, shift: 0, factor: 1, tracks: [], missing: played.map((_, p) => p).filter((p) => !seen.has(p)) }
+  return { bars, sections, shift: 0, factor: 1, tracks: [], missing: played.map((_, p) => p).filter((p) => !seen.has(p)), tempoLocked: 0 }
 }
 
 /** Synced bar sounding at `pos`, or -1 (before the tab, in a gap, after it). */

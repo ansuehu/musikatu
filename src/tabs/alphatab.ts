@@ -24,8 +24,16 @@ export function loadTab(bytes: Uint8Array): TabScore {
 
 export function fromAlphaTab(score: Score): TabScore {
   const Direction = alphaTab.model.Direction
+  // tempo in force at the start of each bar, and the changes inside it
   let tempo = score.tempo
-  const bars: TabBar[] = score.masterBars.map((mb) => ({
+  const tempi = score.masterBars.map((mb) => {
+    const autos = [...mb.tempoAutomations].sort((a, b) => a.ratioPosition - b.ratioPosition)
+    const start = autos.find((a) => a.ratioPosition <= 0)?.value ?? tempo
+    const changes = autos.filter((a) => a.ratioPosition > 0).map((a) => ({ at: Math.min(a.ratioPosition, 0.999), bpm: a.value }))
+    tempo = changes.length ? changes[changes.length - 1].bpm : start
+    return { start, changes }
+  })
+  const bars: TabBar[] = score.masterBars.map((mb, i) => ({
     num: mb.timeSignatureNumerator,
     den: mb.timeSignatureDenominator,
     ticks: mb.calculateDuration(),
@@ -34,7 +42,8 @@ export function fromAlphaTab(score: Score): TabScore {
     endings: mb.alternateEndings,
     section: mb.section ? mb.section.text || mb.section.marker || 'Section' : null,
     directions: [...(mb.directions ?? [])].map((d) => Direction[d].replace(/^Target|^Jump/, '') as TabDirection),
-    tempo: (tempo = mb.tempoAutomations.find((a) => a.ratioPosition === 0)?.value ?? tempo),
+    tempo: tempi[i].start,
+    ...(tempi[i].changes.length ? { tempoChanges: tempi[i].changes } : {}),
   }))
   const tracks: TabTrack[] = score.tracks.map((t) => {
     const staff = t.staves[0]

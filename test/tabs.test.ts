@@ -4,7 +4,7 @@ import * as alphaTab from '@coderline/alphatab'
 import { loadTab } from '../src/tabs/alphatab.ts'
 import { expandBars } from '../src/tabs/expand.ts'
 import type { AudioBeats } from '../src/tabs/align.ts'
-import { mainTrack, TICKS_PER_QUARTER, type TabBar, type TabScore } from '../src/tabs/model.ts'
+import { barSeconds, mainTrack, TICKS_PER_QUARTER, type TabBar, type TabScore } from '../src/tabs/model.ts'
 import { barAt, beatToSample, regularBeats, sampleAt, syncTab, tickAt, type TabSync } from '../src/tabs/sync.ts'
 
 const tex = (s: string) => new TextEncoder().encode(s)
@@ -349,8 +349,8 @@ test('bars map to times and back', () => {
   assert.equal(beatToSample(beats, -1), 500)
   const sync: TabSync = {
     bars: [
-      { played: 0, start: 1000, end: 3200, beats: [1000, 1500, 2000, 2600], unitTicks: TICKS_PER_QUARTER, section: 0, pinned: false },
-      { played: 1, start: 3200, end: 5200, beats: [3200, 3700, 4200, 4700], unitTicks: TICKS_PER_QUARTER, section: 0, pinned: false },
+      { played: 0, start: 1000, end: 3200, beats: [1000, 1500, 2000, 2600], unitTicks: TICKS_PER_QUARTER, section: 0, pinned: false, match: 1 },
+      { played: 1, start: 3200, end: 5200, beats: [3200, 3700, 4200, 4700], unitTicks: TICKS_PER_QUARTER, section: 0, pinned: false, match: 1 },
     ],
     sections: [{ label: '', first: 0, last: 1, confidence: 1, jumped: false }],
     shift: 0,
@@ -412,4 +412,77 @@ test('a freely played recording is left on its beats', () => {
     sync.bars.map((b) => free.indexOf(b.start)),
     Array.from({ length: 20 }, (_, p) => 4 * p),
   )
+})
+
+test('tempo changes inside a bar are kept and timed', () => {
+  const score = alphaTab.importer.ScoreLoader.loadAlphaTex(`\\tempo 120 . :4 0.6 0.6 0.6 0.6 | :4 0.6 0.6 0.6 0.6 | :4 0.6 0.6 0.6 0.6`, new alphaTab.Settings())
+  // halfway through bar 2, 60 BPM; it stays for bar 3
+  const auto = new alphaTab.model.Automation()
+  auto.type = alphaTab.model.AutomationType.Tempo
+  auto.value = 60
+  auto.ratioPosition = 0.5
+  score.masterBars[1].tempoAutomations.push(auto)
+  const tab = loadTab(new alphaTab.exporter.Gp7Exporter().export(score, new alphaTab.Settings()))
+  assert.deepEqual(
+    tab.bars.map((b) => [b.tempo, b.tempoChanges?.map((c) => [c.at, c.bpm]) ?? []]),
+    [
+      [120, []],
+      [120, [[0.5, 60]]],
+      [60, []],
+    ],
+  )
+  assert.equal(barSeconds(tab.bars[0]), 2)
+  assert.equal(barSeconds(tab.bars[1]), 1 + 2)
+  assert.equal(barSeconds(tab.bars[1], 2 * TICKS_PER_QUARTER), 1)
+  assert.equal(barSeconds(tab.bars[2]), 4)
+})
+
+/**
+ * The same recording with the tracker lost from beat `from` to beat `to`: beats every `spacing` ms
+ * there instead, each with the harmony of the music at its time.
+ */
+function lose(rec: { beats: number[]; audio: AudioBeats }, from: number, to: number, spacing: number) {
+  const { beats, audio } = rec
+  const lost: number[] = []
+  for (let t = beats[from]; t < beats[to]; t += spacing) lost.push(Math.round(t))
+  const all = [...beats.slice(0, from), ...lost, ...beats.slice(to)]
+  const src = all.map((t) => {
+    let k = 0
+    while (k + 1 < beats.length && beats[k + 1] <= t) k++
+    return k
+  })
+  return {
+    beats: all,
+    audio: { chroma: src.map((k) => audio.chroma[k]), level: new Float32Array(all.length).fill(0.5), bass: src.map((k) => audio.bass[k]), downbeats: [] as number[] },
+  }
+}
+
+test('bars where the tracker lost the pulse are rebuilt on the tempo of the bars around them', () => {
+  const chords = [...VERSE, ...CHORUS, ...BRIDGE, ...VERSE, ...CHORUS, ...VERSE]
+  const tab = makeTab([{ name: 'Song', bars: chords }])
+  const rec = recording(chords)
+  // bars 9–12 (beats 32–47): beats every 170 ms, nothing like the 500 ms pulse
+  const { beats, audio } = lose(rec, 32, 48, 170)
+  const sync = syncTab(tab, { beats, sampleRate: SR, audio })
+  for (let p = 8; p < 12; p++) {
+    const b = sync.bars.find((x) => x.played === p)!
+    assert.ok(Math.abs(b.start - rec.beats[4 * p]) <= 2, `bar ${p + 1} at ${b.start}, true ${rec.beats[4 * p]}`)
+  }
+  assert.ok(sync.tempoLocked >= 4)
+})
+
+test('a lost start is put on the tempo, an intro the tab lacks is not', () => {
+  const chords = [...VERSE, ...CHORUS, ...VERSE, ...CHORUS, ...VERSE, ...CHORUS]
+  const tab = makeTab([{ name: 'Song', bars: chords }])
+  // the tracker lost the first three bars
+  const rec = recording(chords)
+  const lost = lose(rec, 0, 12, 170)
+  const sync = syncTab(tab, { beats: lost.beats, sampleRate: SR, audio: lost.audio })
+  for (let p = 0; p < 3; p++) assert.ok(Math.abs(sync.bars.find((x) => x.played === p)!.start - rec.beats[4 * p]) <= 2, `bar ${p + 1}`)
+  // an intro of other chords before the same song, also with the tracker lost: the tab still starts after it
+  const intro = recording([...BRIDGE, ...chords])
+  const lostIntro = lose(intro, 0, 16, 170)
+  const sync2 = syncTab(tab, { beats: lostIntro.beats, sampleRate: SR, audio: lostIntro.audio })
+  const first = sync2.bars.find((x) => x.played === 0)!
+  assert.ok(first.start >= intro.beats[16] - 2, `bar 1 at ${first.start}, the intro ends at ${intro.beats[16]}`)
 })

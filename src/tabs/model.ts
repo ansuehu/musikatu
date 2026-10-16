@@ -70,8 +70,25 @@ export interface TabBar {
   /** Section name starting at this bar ("Chorus"), or null. */
   section: string | null
   directions: TabDirection[]
-  /** Tempo at the start of the bar, quarter notes per minute (changes inside a bar aren't kept). */
+  /** Tempo at the start of the bar, quarter notes per minute. */
   tempo: number
+  /** Tempo changes inside the bar: position as a share of the bar (0 < at < 1), new tempo. */
+  tempoChanges?: { at: number; bpm: number }[]
+}
+
+/** Seconds from the start of `bar` to tick `tick` of it, following its tempo changes. */
+export function barSeconds(bar: TabBar, tick = bar.ticks): number {
+  let s = 0
+  let from = 0
+  let bpm = bar.tempo
+  for (const c of bar.tempoChanges ?? []) {
+    const at = c.at * bar.ticks
+    if (at >= tick) break
+    s += ((at - from) / TICKS_PER_QUARTER) * (60 / bpm)
+    from = at
+    bpm = c.bpm
+  }
+  return s + ((tick - from) / TICKS_PER_QUARTER) * (60 / bpm)
 }
 
 export interface TabScore {

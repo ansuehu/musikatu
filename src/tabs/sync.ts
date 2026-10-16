@@ -18,6 +18,10 @@ export interface SyncedBar {
   section: number
   /** Placed by hand. */
   pinned: boolean
+  /** How well its harmony matches the recording (standardised pair score, see align.ts). */
+  match: number
+  /** Put there by the tempo lock (from the tab's tempo, not the beat grid). */
+  byTempo?: boolean
 }
 
 /** A run of synced bars from one block of the tab, with how sure the match is. */
@@ -167,6 +171,16 @@ export function syncTab(score: TabScore, input: SyncInput): TabSync {
   out.shift = r.shift
   out.factor = factor
   out.tracks = tracks
+  if (input.tempoLock ?? true) {
+    // bars the tempo lock adds get their harmony match from the same pair scores
+    const matchOf = (p: number, at: number[]) => at.reduce((m, x, j) => m + r.em.at(tab.offset[p] + j, nearestBeat(input.beats, x)), 0) / at.length
+    const unitsOf = (p: number) => ({ n: tab.units[p], unitTicks: tab.unitTicks[p] })
+    const last = input.beats[input.beats.length - 1] ?? 0
+    out.tempoLocked = lockToTempo(out, score, played, input.sampleRate, { matchOf, unitsOf, end: last + input.sampleRate })
+    out.sections = groupSections(out.bars, played)
+    const seen = new Set(out.bars.map((b) => b.played))
+    out.missing = played.map((_, p) => p).filter((p) => !seen.has(p))
+  }
   // how much worse the best alignment gets if the section's first bar, or any bar with the same notes
   // (another pass of a repeat, a section written out twice), may not sound within a beat of where it
   // was put: close to nothing means other music fits there as well. Which of several identical bars it
@@ -179,14 +193,14 @@ export function syncTab(score: TabScore, input: SyncInput): TabSync {
   const anchored = new Set(anchors.map((a) => a.played))
   for (const s of out.sections) {
     const b = out.bars[s.first]
-    if (anchored.has(b.played)) continue
+    // bars the tempo lock made were never the alignment's choice, so it can't say how unique they are
+    if (anchored.has(b.played) || b.byTempo) continue
     const beat = nearestBeat(input.beats, b.start)
     const units = played.flatMap((_, p) => (contentKey[p] === contentKey[b.played] ? Array.from({ length: tab.units[p] }, (_, j) => tab.offset[p] + j) : []))
     const forbid = new Map([beat - 1, beat, beat + 1].filter((t) => t >= 0).map((t) => [t, units]))
     const alt = viterbi(tab, r.em, structure, input.audio.downbeats, params, anchors, false, forbid).score
     s.confidence *= 1 - Math.exp(-Math.max(0, r.score - alt) / UNIQUE_SCALE)
   }
-  if (input.tempoLock ?? true) out.tempoLocked = lockToTempo(out, score, played, input.sampleRate)
   // hand-placed bars start exactly where they were put
   for (const a of input.anchors ?? []) {
     const b = out.bars.find((b) => b.played === a.played && Math.abs(b.start - a.pos) < (b.end - b.start) * 2)
@@ -228,8 +242,12 @@ export function buildSync(played: PlayedBar[], tab: TabUnits, path: Int32Array, 
     if (Number.isNaN(o.unitAt[j])) o.unitAt[j] = t
   }
 
+  const matchOn = (t0: number, t1: number) => {
+    let m = 0
+    for (let t = t0; t < t1; t++) m += em.at(path[t], t)
+    return m / Math.max(1, t1 - t0)
+  }
   const bars: SyncedBar[] = []
-  const quality: number[] = []
   for (const o of occs) {
     const n = tab.units[o.p]
     // fill units that were skipped by interpolation between the known ones and the bar end
@@ -251,14 +269,21 @@ export function buildSync(played: PlayedBar[], tab: TabUnits, path: Int32Array, 
       unitTicks: tab.unitTicks[o.p],
       section: 0,
       pinned: false,
+      // how well the bar matches: mean standardised score on its beats
+      match: matchOn(o.t0, o.t1),
     })
-    // how well the bar matches: mean standardised score on its beats
-    let match = 0
-    for (let t = o.t0; t < o.t1; t++) match += em.at(path[t], t)
-    quality.push(match / Math.max(1, o.t1 - o.t0))
   }
 
-  // sections: consecutive bars of one block, in recording order
+  const sections = groupSections(bars, played)
+  const seen = new Set(bars.map((b) => b.played))
+  return { bars, sections, shift: 0, factor: 1, tracks: [], missing: played.map((_, p) => p).filter((p) => !seen.has(p)), tempoLocked: 0 }
+}
+
+/**
+ * Sections: consecutive bars of one block, in recording order, with a confidence from how well their
+ * harmony matches (sets each bar's section).
+ */
+export function groupSections(bars: SyncedBar[], played: PlayedBar[]): SyncSection[] {
   const sections: SyncSection[] = []
   bars.forEach((b, i) => {
     const prev = bars[i - 1]
@@ -270,14 +295,13 @@ export function buildSync(played: PlayedBar[], tab: TabUnits, path: Int32Array, 
   })
   for (const s of sections) {
     let m = 0
-    for (let i = s.first; i <= s.last; i++) m += quality[i]
+    for (let i = s.first; i <= s.last; i++) m += bars[i].match
     const k = s.last - s.first + 1
     // the structure is least certain where the recording leaves the tab's order: which of several
     // identical passes it is can't be told from the harmony
     s.confidence = sigmoid(2 * (m / k - 0.6)) * (s.jumped ? JUMP_DOUBT : 1)
   }
-  const seen = new Set(bars.map((b) => b.played))
-  return { bars, sections, shift: 0, factor: 1, tracks: [], missing: played.map((_, p) => p).filter((p) => !seen.has(p)), tempoLocked: 0 }
+  return sections
 }
 
 /** Synced bar sounding at `pos`, or -1 (before the tab, in a gap, after it). */

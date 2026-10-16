@@ -74,50 +74,82 @@ Transcribed notes and the chord chart as extra evidence did not help: 97.7% / 99
 
 **Confidence.** The confidence combines two things: how well the harmony matches, and how much worse the best alignment gets if the section's first bar (or any bar with the same notes) may not sound within a beat of where it was put. The panel tints sections below 0.5 amber ("check this") and below 0.3 red ("poor match"). Amber catches 86% of the bars showing the wrong music and 3% of the right ones; red catches 14% and 0%. It can't flag the rest, because harmony alone can't tell them apart (see below).
 
-## A real tab: *Drip* (Mise en Abyme)
+## Real tabs
 
 ```sh
-node scripts/chord-eval/prepare.cjs scratch/eval Drip.flac     # beats; separate.cjs for the stems (drums are needed)
-echo /path/to/Drip.flac > scratch/eval/Drip.src
-node scripts/tab-eval/real.ts scratch/eval Drip "scratch/drip/03 Drip.gp"   # VERBOSE=1: per section, BARS=1: bars off by ½ beat
+node scripts/chord-eval/prepare.cjs scratch/eval song.flac      # beats
+DEVICE=cpu node scripts/chord-eval/separate.cjs <model> scratch/eval/stems song.flac
+echo /path/to/song.flac > scratch/eval/<song>.src
+node scripts/tab-eval/real.ts scratch/eval <song> <tab file>    # VERBOSE=1: sections, BARS=1: bars off by ½ beat, SUMMARY=<file>
 ```
 
-A full-band Guitar Pro tab:
+Six songs with a Guitar Pro tab, kept locally:
 
-- 183 bars at a constant 175 BPM, no repeat signs;
-- mostly 4/4, with eleven 5/4 bars and single 1/8, 7/8 and 9/8 bars;
-- eight tracks in drop C: two clean guitars, two rhythm guitars, lead, harmony, bass and drums.
+- five from Mise en Abyme's album, transcribed with drums: *Drip*, *Emergence*, *Reflection*, *Framed Pieces*, *A Way Out*;
+- Chon's *Dew*, a fan tab with no drum track.
 
-The band played to a click, so the truth comes from the tab. Its tempo map gives each bar's time, and its 1229 drum hits matched to the onsets of the drum stem give the offset. The fit is sharp: 1.55 at the best offset against 0.19 fifty ms off. Section by section the offset is either the song's or 86–88 ms earlier: section A, and everything from C' (around bar 122) to the end. That is a sixteenth note at 175 BPM, so the tab is a sixteenth note longer or shorter than the recording at those two points. The truth uses each bar's local offset. The 23 bars without drums nearby (most of the clean intro) are left out of the scores.
+They are much harder than the test tabs:
 
-Without the tempo lock (bars on tracked beats only):
+- 3/4, 5/4 and 7/4 sections, with single 1/16, 1/8, 7/8, 9/8, 11/8 and 14/8 bars;
+- tempo changes, some in the middle of a bar;
+- 6- and 7-string guitars in drop tunings;
+- clean intros without drums, blast beats, and recordings longer than their tabs (*A Way Out* by 55 s, *Emergence* by a 21-second intro).
 
-| Audio | Median error | p95 error | Max | Within ½ beat | Unplaced |
-|---|---|---|---|---|---|
-| guitar + bass stems | 15 ms (0.04 beats) | 293 ms (0.86 beats) | 382 ms | 88.1% | 0 of 160 |
-| mix | 15 ms (0.04 beats) | 194 ms (0.57 beats) | 505 ms | 85.6% | 4 of 160 |
+**The truth.** These songs were played to a click and the tabs follow it, so the truth comes from the tab:
 
-Almost all of these misses are half a beat off (170–190 ms). That is the beat tracker: in these syncopated riffs it sometimes locks onto the off-beats, and 20 of the 160 true bar starts have no tracked beat within 60 ms. Since bars could only start on tracked beats, those bars landed half a beat off.
+1. Its tempo map gives each bar's time.
+2. Its drum hits, matched to the onsets of the drum stem, give the offset to the recording: first for the whole song, then for each section. A section keeps the previous section's offset while it still fits, since drum grooves fit nearly as well one bar off, and it moves only where the recording adds or leaves out something.
+3. Then each bar gets an offset within ±100 ms of its section's.
 
-**Tempo lock** (`src/tabs/tempo.ts`, on by default). The band played to a click and the tab follows the same tempo, so within a run of bars played in order, recording time is a straight line of tab time. Each bar is checked against a robust (Theil–Sen) line through its eight neighbours on each side, leaving the bar itself out. It is moved onto the line only when the neighbours sit within 0.08 beats of their line and the bar is more than a quarter beat off it. In a recording that doesn't keep the tab's tempo, the neighbours don't fit tightly and nothing moves (unit test with rubato). The lock uses neither drums nor onsets, so the drum-based truth stays independent.
+Sections whose peak isn't sharp (under 3× the fit 50 ms either side) get no truth, nor do bars with too few drum hits near them. That excludes clean intros, and blast beats, which repeat every eighth. The sync uses neither drums nor onsets, so this truth is independent of it.
 
-| Audio | Median error | p95 error | Max | Within ½ beat | Bars moved |
-|---|---|---|---|---|---|
-| guitar + bass stems | 12 ms (0.04 beats) | 96 ms (0.28 beats) | 181 ms | 98.1% | 27 |
-| mix | 13 ms (0.04 beats) | 105 ms (0.31 beats) | 267 ms | 95.0% | 27 |
-| mix, in the app (48 kHz, its own beat tracking) | 12 ms | 96 ms | | 96.9% (155 of 160) | |
+*Dew* gets no truth. Matching its guitar notes against the guitar and bass stems has no clear peak (1.2×), and the recording is 16 s longer than the tab's tempo map. The tab's timing doesn't follow the recording closely enough to measure against.
 
-On the test songs (Wonderwall, Boulevard) every score is the same with and without the lock, and under all the beat-grid options.
+**Results** (within ½ beat of the true bar start; median / p95 error with the tempo lock):
 
-**Onsets didn't help.** Before the tempo lock, I tried moving each bar by up to 0.6 beats to where the onsets of the tab's guitars and bass best match the onsets heard in the recording (spectral flux), with neighbouring bars kept alike and a pull toward the beat grid. It changed little: 88.1% → 89.4% within ½ beat on stems, and 85.6% → 86.3% on the mix. At the bars that were half a beat off, the true position fitted the pitched onsets better in only 7 of 19 cases. Steady eighth-note riffs look the same half a beat later. The drums would settle it, but they are also what the truth is made from, so that couldn't be measured honestly, and the approach was dropped.
+| Song | Bars with truth | Stems, beats only | Stems, tempo lock | Mix, beats only | Mix, tempo lock | Median / p95 (stems) |
+|---|---|---|---|---|---|---|
+| Drip | 157 of 183 | 90.4% | 100% | 87.9% | 100% | 10 / 26 ms |
+| Emergence | 57 of 202 | 56.1% | 98.2% | 52.6% | 98.2% | 6 / 21 ms |
+| Reflection | 116 of 144 | 37.1% | 56.9% | 28.4% | 59.5% | 70 / 329 ms |
+| Framed Pieces | 176 of 213 | 91.5% | 92.6% | 89.2% | 100% | 13 / 433 ms |
+| A Way Out | 260 of 262 | 80.0% | 100% | 76.2% | 93.5% | 15 / 35 ms |
+| **all** | 766 | **76.5%** | **91.6%** | **72.6%** | **91.5%** | |
 
-The sync takes about 2 s in a worker (3.9 s in the app, including reading the file).
+The app gives the same on *Drip* (100%, median 12 ms) and *Emergence* (56 of 57, median 10 ms, p95 23 ms), at 48 kHz with its own beat tracking. All harness checks pass.
 
-Three changes came from this song: the tempo lock, and the two below. The tracker counted the 35-second clean intro (no drums) at half speed, so the grid repair now splits stretches whose spacing is about twice the song's beat. And the uniqueness part of the confidence now rules out the bar sounding within a beat of its place, not only starting exactly there; before, correct sections of this song scored as low as 0.02.
+**Why the tempo lock.** The harmony sync can only start bars on tracked beats, and on these songs the beat tracker often loses the pulse:
+
+- it counts a drumless intro at half speed, which the grid repair fixes;
+- it sits on the off-beats in syncopated riffs;
+- it ticks two to four times too fast through blast beats;
+- it wanders in odd meters (*Emergence* bars 107–117 have 6–10 tracked beats per 4/4 bar).
+
+The tempo lock (`src/tabs/tempo.ts`) uses the fact that recording time is a straight line of tab time, broken only where the recording adds or leaves out something. It takes runs of bars the sync placed on a steady tempo and keeps the ones that tell one consistent story. A run placed somewhere wrong, but on a steady tempo, is left out. Then:
+
+- single bars off the line of their neighbours are moved onto it;
+- stretches between two runs on the same line are rebuilt on that line, whatever the sync put there;
+- the bars before the first run and after the last are put on its line if their harmony fits about as well as the rest of the song and as well as the sync's own placement (or the sync repeated material there). An intro the tab doesn't have fails that test;
+- whole stretches half a beat off, between two runs that agree, are moved back.
+
+Where a recording doesn't keep the tab's tempo, no runs line up and nothing moves (unit tests with rubato and an intro missing from the tab). On the test songs, the lock changes within ½ beat from 98.4% to 99.0% on stems and from 96.6% to 97.3% on the mix.
+
+**What didn't work.**
+
+- **Onsets.** Matching the tab's guitar and bass onsets to the recording's: steady eighth-note riffs look the same half a beat later (88.1% → 89.4% on *Drip*).
+- **Regridding.** Replacing the tracked beats with the tab's where they disagreed, then analysing and syncing again. It helped *Reflection* and hurt *Emergence*, because counting 9/8 in dotted quarters or quarters is a legitimate difference, not an error. And no measure from inside the app could tell when to trust the second pass.
+
+**Still wrong.**
+
+- ***Reflection*:** 57–60%. The tracker counts sixteenths through the first 30 seconds. The sync takes section B for a repeat of A, which has similar harmony, and the recording drifts about 0.4 s against the tab over the song.
+- ***Framed Pieces* on stems:** 92.6%. Its two long runs are 0.9 s apart where the tab says they meet; the recording probably holds something there that the tab doesn't. The mix gets it right.
+- ***Dew*:** after the first minute the sync scatters, with jumps, and nearly every section is marked as a poor match. The panel at least says so.
+
+The sync takes 2–4 s per song in the worker.
 
 ## What goes wrong
 
 - **Sections with the same chords.** Both songs' intros have the same chords as their verses. When the tab leaves out the intro, the tab's verse can start at the intro just as well, and on the mix (vocals included) it sometimes does. One drag fixes it: with the first bar placed by hand, every variant is at least 95% within ½ beat on the mix (cut-intro 98–100%), and the remaining misses are passes of identical repeats. The stems separate the cases better.
 - **Endings the tab doesn't have.** The recordings ring on past the charts' last chord. Wonderwall's last two bars match the chorus as well as the written ending, so the ending is sometimes placed one bar late. Those bars get a low confidence.
-- **Clean tabs.** The test tabs were written from the same progressions as the reference. *Drip* is a real tab, but it matches its recording closely: it was transcribed with the click, apart from two sixteenth-note slips. Tabs with wrong notes or bars haven't been measured.
+- **Clean tabs.** The test tabs were written from the same progressions as the reference. The Mise en Abyme tabs were transcribed with the click and match their recordings closely; *Dew* doesn't, and there the sync fails. Tabs with wrong notes or bars, and songs not played to a click, are only covered by the test tabs.
 - **Quiet parts on the mix.** *Drip*'s clean intro is placed right but scores 0.21–0.30, because the clean guitars are quiet under everything else, so it is tinted as a poor match. The stems help a little.

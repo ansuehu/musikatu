@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { expandBars, type PlayedBar } from '../tabs/expand'
-import { TICKS_PER_QUARTER, type TabBeat, type TabScore } from '../tabs/model'
+import { mainTrack, TICKS_PER_QUARTER, type TabBeat, type TabScore } from '../tabs/model'
 import { barAt, tickAt, type SyncedBar, type TabSync } from '../tabs/sync'
 import { TAB_EXTENSIONS, type TabProject, type TabStatus } from '../tabs/useTabSync'
 import type { Selection } from '../types'
@@ -28,7 +28,7 @@ interface Props {
 }
 
 /** Sections below this confidence are marked as a poor match, below UNSURE as unsure (see scripts/tab-eval). */
-const POOR = 0.4
+const POOR = 0.3
 const UNSURE = 0.5
 const NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B']
 const GAP_W = 64
@@ -77,7 +77,8 @@ export function TabPanel(p: Props) {
   const sync = p.project?.sync ?? null
   const score = p.score
   const played = useMemo(() => (score ? expandBars(score.bars) : []), [score])
-  const track = score?.tracks[p.project?.track ?? 0] ?? score?.tracks[0] ?? null
+  const trackIndex = score ? ((p.project?.track ?? -1) >= 0 ? p.project!.track : mainTrack(score)) : 0
+  const track = score?.tracks[trackIndex] ?? score?.tracks[0] ?? null
   const strip = useMemo(
     () => (sync && score && track && played.length ? layoutStrip(sync, score, track, played, perQuarter, p.songLength) : null),
     [sync, score, track, played, perQuarter, p.songLength],
@@ -365,7 +366,7 @@ export function TabPanel(p: Props) {
         <>
           <div className="gtab-toolbar">
             {score.tracks.length > 1 && (
-              <select className="select" value={p.project?.track ?? 0} onChange={(e) => (p.onTrack(+e.target.value), e.currentTarget.blur())} aria-label="Track">
+              <select className="select" value={trackIndex} onChange={(e) => (p.onTrack(+e.target.value), e.currentTarget.blur())} aria-label="Track">
                 {score.tracks.map((t, i) => (
                   <option key={i} value={i} disabled={t.percussion}>
                     {t.name}

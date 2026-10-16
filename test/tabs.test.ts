@@ -4,7 +4,7 @@ import * as alphaTab from '@coderline/alphatab'
 import { loadTab } from '../src/tabs/alphatab.ts'
 import { expandBars } from '../src/tabs/expand.ts'
 import type { AudioBeats } from '../src/tabs/align.ts'
-import { TICKS_PER_QUARTER, type TabBar, type TabScore } from '../src/tabs/model.ts'
+import { mainTrack, TICKS_PER_QUARTER, type TabBar, type TabScore } from '../src/tabs/model.ts'
 import { barAt, beatToSample, regularBeats, sampleAt, syncTab, tickAt, type TabSync } from '../src/tabs/sync.ts'
 
 const tex = (s: string) => new TextEncoder().encode(s)
@@ -368,4 +368,11 @@ test('bars map to times and back', () => {
   assert.equal(tickAt(sync.bars[0], 2900), 3.5 * TICKS_PER_QUARTER)
   for (const tick of [0, 480, 1000, 2000, 3500]) assert.ok(Math.abs(tickAt(sync.bars[1], sampleAt(sync.bars[1], tick)) - tick) < 2)
   assert.equal(sampleAt(sync.bars[1], 4 * TICKS_PER_QUARTER), 5200)
+})
+
+test('the busiest guitar track is shown first', () => {
+  const beat = (n: number) => ({ start: 0, duration: 960, notes: Array.from({ length: n }, (_, k) => ({ string: k + 1, fret: 0, midi: 40 + k, tie: false, dead: false })) })
+  const track = (name: string, strings: number, notes: number, percussion = false) => ({ name, tuning: Array(strings).fill(40), capo: 0, percussion, bars: [[beat(notes)]] })
+  const score: TabScore = { title: '', artist: '', tempo: 120, bars: [bar()], tracks: [track('Clean', 6, 1), track('Bass', 4, 9), track('Drums', 0, 0, true), track('Rhythm', 6, 5)] }
+  assert.equal(mainTrack(score), 3)
 })

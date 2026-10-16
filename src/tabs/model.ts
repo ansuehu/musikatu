@@ -90,3 +90,16 @@ export function barBeats(bar: TabBar): { count: number; ticks: number } {
   const ticks = compound ? (TICKS_PER_QUARTER * 3) / 2 : TICKS_PER_QUARTER
   return { count: bar.ticks / ticks, ticks }
 }
+
+/** The track to show first: the pitched track with the most notes, guitars (six strings or more) first. */
+export function mainTrack(score: TabScore): number {
+  let best = 0
+  let bestKey = -1
+  score.tracks.forEach((t, i) => {
+    if (t.percussion) return
+    const notes = t.bars.reduce((a, bar) => a + bar.reduce((b, beat) => b + beat.notes.length, 0), 0)
+    const key = (t.tuning.length >= 6 ? 1e9 : 0) + notes
+    if (key > bestKey) [best, bestKey] = [i, key]
+  })
+  return best
+}

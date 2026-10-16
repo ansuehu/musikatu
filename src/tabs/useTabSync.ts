@@ -12,7 +12,7 @@ export interface TabProject {
   name: string
   /** The tab file itself (base64), so the project doesn't depend on where it was. */
   data: string
-  /** Track shown in the panel. */
+  /** Track shown in the panel (-1: not chosen yet, the main one is shown). */
   track: number
   /** Bars placed by hand. */
   anchors: TabAnchor[]
@@ -133,7 +133,7 @@ export function useTabSync({ project, onProject, buffer, stems, grid, a4 }: Args
   const open = useCallback(
     async (file: File) => {
       const bytes = new Uint8Array(await file.arrayBuffer())
-      onProject({ name: file.name, data: toBase64(bytes), track: 0, anchors: [], sync: null, gridKey: '' })
+      onProject({ name: file.name, data: toBase64(bytes), track: -1, anchors: [], sync: null, gridKey: '' })
     },
     [onProject],
   )

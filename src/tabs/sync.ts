@@ -98,7 +98,9 @@ export function nearestBeat(beats: number[], pos: number): number {
  * The tracked beats with gaps filled and stray beats removed, so each beat of the music has one: where
  * the spacing is about k times the local beat length (k ≤ MAX_FILL), k − 1 beats are put in between; a
  * beat much closer to its neighbour than that is dropped. Longer gaps are breaks or a final chord ringing
- * out and are left alone. Downbeats follow their beats.
+ * out and are left alone. Stretches the tracker counted at half speed (spacing about twice the song's
+ * usual beat, as happens in quiet intros without drums) get a beat in each gap. Downbeats follow their
+ * beats.
  */
 const MAX_FILL = 4
 
@@ -106,10 +108,12 @@ export function regularBeats(beats: number[], downbeats: number[] = []): { beats
   const n = beats.length
   if (n < 4) return { beats: [...beats], downbeats: [...downbeats] }
   const gaps = beats.slice(1).map((b, i) => b - beats[i])
-  // local beat length: median of the surrounding gaps
+  const median = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1]
+  const song = median(gaps)
+  // local beat length: median of the surrounding gaps, halved where the tracker went to half speed
   const local = gaps.map((_, i) => {
-    const w = gaps.slice(Math.max(0, i - 8), i + 9).sort((a, b) => a - b)
-    return w[w.length >> 1]
+    const m = median(gaps.slice(Math.max(0, i - 8), i + 9))
+    return m > 1.75 * song && m < 2.3 * song ? m / 2 : m
   })
   const isDown = new Set(downbeats)
   const out: number[] = [beats[0]]
@@ -157,10 +161,10 @@ export function syncTab(score: TabScore, input: SyncInput): TabSync {
   out.shift = r.shift
   out.factor = factor
   out.tracks = tracks
-  // how much worse the best alignment gets if a section's first bar may not start where it was put:
-  // close to nothing means other music fits there as well (or the same bar one beat off). Bars with the
-  // same notes (another pass of a repeat, a section written out twice) are ruled out too: which of them
-  // it is doesn't change what the panel shows.
+  // how much worse the best alignment gets if the section's first bar, or any bar with the same notes
+  // (another pass of a repeat, a section written out twice), may not sound within a beat of where it
+  // was put: close to nothing means other music fits there as well. Which of several identical bars it
+  // is doesn't matter, nor a beat either way (the beat grid settles that).
   const contentKey = played.map((_, p) => {
     const parts: string[] = []
     for (let j = 0; j < tab.units[p]; j++) parts.push(Array.from(tab.chroma[tab.offset[p] + j], (v) => Math.round(v * 20)).join(','))
@@ -171,8 +175,9 @@ export function syncTab(score: TabScore, input: SyncInput): TabSync {
     const b = out.bars[s.first]
     if (anchored.has(b.played)) continue
     const beat = nearestBeat(input.beats, b.start)
-    const same = played.flatMap((_, p) => (contentKey[p] === contentKey[b.played] ? [tab.offset[p]] : []))
-    const alt = viterbi(tab, r.em, structure, input.audio.downbeats, params, anchors, false, new Map([[beat, same]])).score
+    const units = played.flatMap((_, p) => (contentKey[p] === contentKey[b.played] ? Array.from({ length: tab.units[p] }, (_, j) => tab.offset[p] + j) : []))
+    const forbid = new Map([beat - 1, beat, beat + 1].filter((t) => t >= 0).map((t) => [t, units]))
+    const alt = viterbi(tab, r.em, structure, input.audio.downbeats, params, anchors, false, forbid).score
     s.confidence *= 1 - Math.exp(-Math.max(0, r.score - alt) / UNIQUE_SCALE)
   }
   // hand-placed bars start exactly where they were put

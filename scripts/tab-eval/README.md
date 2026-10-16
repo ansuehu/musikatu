@@ -1,6 +1,6 @@
 # Tab sync evaluation
 
-Measures how well a Guitar Pro tab is lined up with its recording (`src/tabs/`), so changes to the sync can be measured instead of guessed.
+Measures how well a Guitar Pro tab is lined up with its recording (`src/tabs/`), so changes to the sync can be measured instead of guessed. There are two parts: test tabs made from the chord evaluation's charts (`make-tabs.ts`, `eval.ts`), and real Guitar Pro tabs of songs recorded to a click (`real.ts`).
 
 ## Data
 
@@ -72,10 +72,37 @@ With a worse beat grid (stems / mix):
 
 Transcribed notes and the chord chart as extra evidence did not help: 97.7% / 99.5% (stems + notes) and 96.9% / 99.5% (stems + notes + chart), against 98.4% / 99.5% for the stems alone. The app uses the guitar and bass stems when the song has them, and the mix otherwise.
 
-**Confidence.** Sections below 0.4 are marked as poorly matched in the panel. That catches 62% of the bars showing the wrong music and 3% of the right ones; at 0.5, 76% and 7%. The confidence combines how well the harmony matches with how much worse the best alignment would be if this section were placed elsewhere. It can't flag the remaining errors, because harmony alone can't tell them apart (next section).
+**Confidence.** The confidence combines two things: how well the harmony matches, and how much worse the best alignment gets if the section's first bar (or any bar with the same notes) may not sound within a beat of where it was put. The panel tints sections below 0.5 amber ("check this") and below 0.3 red ("poor match"). Amber catches 86% of the bars showing the wrong music and 3% of the right ones; red catches 14% and 0%. It can't flag the rest, because harmony alone can't tell them apart (see below).
+
+## A real tab: *Drip* (Mise en Abyme)
+
+```sh
+node scripts/chord-eval/prepare.cjs scratch/eval Drip.flac     # beats; separate.cjs for the stems (drums are needed)
+echo /path/to/Drip.flac > scratch/eval/Drip.src
+node scripts/tab-eval/real.ts scratch/eval Drip "scratch/drip/03 Drip.gp"   # VERBOSE=1: per section, BARS=1: bars off by ½ beat
+```
+
+A full-band Guitar Pro tab:
+
+- 183 bars at a constant 175 BPM, no repeat signs;
+- mostly 4/4, with eleven 5/4 bars and single 1/8, 7/8 and 9/8 bars;
+- eight tracks in drop C: two clean guitars, two rhythm guitars, lead, harmony, bass and drums.
+
+The band played to a click, so the truth comes from the tab. Its tempo map gives each bar's time, and its 1229 drum hits matched to the onsets of the drum stem give the offset. The fit is sharp: 1.55 at the best offset against 0.19 fifty ms off. Section by section the offset is either the song's or 86–88 ms earlier: section A, and everything from C' (around bar 122) to the end. That is a sixteenth note at 175 BPM, so the tab is a sixteenth note longer or shorter than the recording at those two points. The truth uses each bar's local offset. The 23 bars without drums nearby (most of the clean intro) are left out of the scores.
+
+| Audio | Median error | p95 error | Max | Within ½ beat | Unplaced |
+|---|---|---|---|---|---|
+| guitar + bass stems | 15 ms (0.04 beats) | 293 ms (0.86 beats) | 382 ms | 88.1% | 0 of 160 |
+| mix | 15 ms (0.04 beats) | 194 ms (0.57 beats) | 505 ms | 85.6% | 4 of 160 |
+| mix, in the app (48 kHz, its own beat tracking) | 13 ms | 308 ms | | 86.3% | 3 of 160 |
+
+The sync takes about 2 s in a worker (3.9 s in the app, including reading the file). Almost all the misses are half a beat off (170–190 ms). That is the beat tracker: in these syncopated riffs it sometimes locks onto the off-beats, and 20 of the 160 true bar starts have no tracked beat within 60 ms. Since bars can only start on tracked beats, those bars land half a beat off. Lining bars up with the tab's note onsets, rather than with the tracked beats, would fix this, but it needs a truth that doesn't also come from onsets.
+
+Two changes came from this song. The tracker counted the 35-second clean intro (no drums) at half speed, so the grid repair now splits stretches whose spacing is about twice the song's beat. And the uniqueness part of the confidence now rules out the bar sounding within a beat of its place, not only starting exactly there; before, correct sections of this song scored as low as 0.02.
 
 ## What goes wrong
 
 - **Sections with the same chords.** Both songs' intros have the same chords as their verses. When the tab leaves out the intro, the tab's verse can start at the intro just as well, and on the mix (vocals included) it sometimes does. One drag fixes it: with the first bar placed by hand, every variant is at least 95% within ½ beat on the mix (cut-intro 98–100%), and the remaining misses are passes of identical repeats. The stems separate the cases better.
 - **Endings the tab doesn't have.** The recordings ring on past the charts' last chord. Wonderwall's last two bars match the chorus as well as the written ending, so the ending is sometimes placed one bar late. Those bars get a low confidence.
-- **Clean tabs.** These tabs were written from the same progressions as the reference. Real tabs have wrong chords, missing bars and different voicings. The structural variants and the transposition test cover the most common differences, but not wrong notes.
+- **Clean tabs.** The test tabs were written from the same progressions as the reference. *Drip* is a real tab, but it matches its recording closely: it was transcribed with the click, apart from two sixteenth-note slips. Tabs with wrong notes or bars haven't been measured.
+- **Quiet parts on the mix.** *Drip*'s clean intro is placed right but scores 0.21–0.30, because the clean guitars are quiet under everything else, so it is tinted as a poor match. The stems help a little.

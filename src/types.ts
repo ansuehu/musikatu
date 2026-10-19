@@ -23,9 +23,16 @@ declare global {
       platform: string
       openFile(): Promise<AudioFilePayload | null>
       initialFile(): Promise<AudioFilePayload | null>
+      /** Reads a song by its path (audio files only). */
+      openPath(path: string): Promise<AudioFilePayload>
+      /** Asks where a song now is; null when cancelled. */
+      locateFile(oldPath: string | null): Promise<AudioFilePayload | null>
       pathForFile(file: File): string | null
       loadProject(key: string): Promise<string | null>
       saveProject(key: string, json: string): Promise<boolean>
+      /** Projects of songs lasting `duration` seconds whose file is gone from where it was. */
+      findMovedProjects(duration: number): Promise<{ key: string; name: string }[]>
+      relinkProject(from: string, to: string): Promise<boolean>
       /** Registers OS-wide hotkeys; resolves with the accelerators that couldn't be registered. */
       setGlobalShortcuts(list: { accelerator: string; action: string }[]): Promise<string[]>
       onGlobalShortcut(callback: (action: string) => void): () => void

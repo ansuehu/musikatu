@@ -1531,6 +1531,15 @@ input[type='range']:disabled {
 .cache-list li.current {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
+.cache-list li.openable .cache-main {
+  cursor: pointer;
+}
+.cache-list li.openable:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.cache-list li.openable:hover .cache-name {
+  color: var(--accent);
+}
 .cache-main {
   flex: 1;
   min-width: 0;

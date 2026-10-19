@@ -1,3 +1,6 @@
+/** Sample rate the separation model works at (electron/stems/model.cjs); cached stems' lengths are in it. */
+export const STEM_MODEL_RATE = 44100
+
 export const STEM_NAMES = ['vocals', 'drums', 'bass', 'guitar', 'piano', 'other'] as const
 export type StemName = (typeof STEM_NAMES)[number]
 
@@ -163,6 +166,12 @@ export interface StemsApi {
   clearCache(): Promise<number>
   cacheList(): Promise<CacheEntry[]>
   cacheDelete(id: string): Promise<void>
+  /** Whether the song with this key has cached stems. */
+  has(key: string): Promise<boolean>
+  /** Keys of cached songs of `length` samples (at the model's rate) whose file is gone from where it was. */
+  findMoved(length: number): Promise<string[]>
+  /** Moves cached stems to a song's new key (the file was moved or renamed). */
+  relink(from: string, to: string): Promise<void>
   cacheDir(): Promise<CacheDirInfo>
   chooseCacheDir(): Promise<CacheDirInfo | null>
   resetCacheDir(): Promise<CacheDirInfo>

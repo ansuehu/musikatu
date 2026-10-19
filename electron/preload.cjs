@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('api', {
   platform: process.platform,
   openFile: () => ipcRenderer.invoke('file:open'),
   initialFile: () => ipcRenderer.invoke('file:initial'),
+  openPath: (filePath) => ipcRenderer.invoke('file:openPath', filePath),
+  locateFile: (oldPath) => ipcRenderer.invoke('file:locate', oldPath),
   /** Absolute path of a dropped File (File.path is gone in sandboxed renderers). */
   pathForFile: (file) => {
     try {
@@ -20,6 +22,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   loadProject: (key) => ipcRenderer.invoke('project:load', key),
   saveProject: (key, json) => ipcRenderer.invoke('project:save', key, json),
+  findMovedProjects: (duration) => ipcRenderer.invoke('project:findMoved', duration),
+  relinkProject: (from, to) => ipcRenderer.invoke('project:relink', from, to),
   setGlobalShortcuts: (list) => ipcRenderer.invoke('shortcuts:setGlobal', list),
   onGlobalShortcut: (callback) => subscribe('shortcuts:triggered', callback),
   onMenu: (callback) => subscribe('menu', callback),
@@ -46,6 +50,9 @@ contextBridge.exposeInMainWorld('api', {
     clearCache: () => ipcRenderer.invoke('stems:clearCache'),
     cacheList: () => ipcRenderer.invoke('stems:cacheList'),
     cacheDelete: (id) => ipcRenderer.invoke('stems:cacheDelete', id),
+    has: (key) => ipcRenderer.invoke('stems:has', key),
+    findMoved: (length) => ipcRenderer.invoke('stems:findMoved', length),
+    relink: (from, to) => ipcRenderer.invoke('stems:relink', { from, to }),
     cacheDir: () => ipcRenderer.invoke('stems:cacheDir'),
     chooseCacheDir: () => ipcRenderer.invoke('stems:chooseCacheDir'),
     resetCacheDir: () => ipcRenderer.invoke('stems:resetCacheDir'),

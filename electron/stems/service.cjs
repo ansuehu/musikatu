@@ -301,6 +301,42 @@ function register(getWindow) {
     await fsp.rm(path.join(cacheRoot(), id), { recursive: true, force: true })
   })
 
+  // ---- songs whose audio file moved ----
+  const exists = (p) => fsp.access(p).then(() => true, () => false)
+  const isPathKey = (k) => typeof k === 'string' && k.startsWith('path:') && path.isAbsolute(k.slice(5))
+
+  /** Whether the song with this key has cached stems. */
+  ipcMain.handle('stems:has', (_e, key) => exists(path.join(cacheDir(key), 'meta.json')))
+
+  /** Keys of cached songs of `length` model samples whose audio file is no longer where it was. */
+  ipcMain.handle('stems:findMoved', async (_e, length) => {
+    if (typeof length !== 'number') throw new Error('Bad length')
+    const out = []
+    for (const id of await cacheEntries()) {
+      let meta
+      try {
+        meta = JSON.parse(await fsp.readFile(path.join(cacheRoot(), id, 'meta.json'), 'utf8'))
+      } catch {
+        continue
+      }
+      if (meta.modelSha !== model.MODEL.sha256 || !isPathKey(meta.key) || Math.abs(meta.length - length) > 2) continue
+      if (!(await exists(meta.key.slice(5)))) out.push(meta.key)
+    }
+    return out
+  })
+
+  /** Moves a song's cached stems from its old key to its new one (the file was moved or renamed). */
+  ipcMain.handle('stems:relink', async (_e, { from, to }) => {
+    if (!isPathKey(from) || !isPathKey(to)) throw new Error('Bad key')
+    if (currentSeparation && (currentSeparation.key === from || currentSeparation.key === to)) throw new Error('That song is being separated right now.')
+    const src = cacheDir(from)
+    const dst = cacheDir(to)
+    if (await exists(dst)) throw new Error('This song already has separated stems.')
+    const meta = JSON.parse(await fsp.readFile(path.join(src, 'meta.json'), 'utf8'))
+    await fsp.rename(src, dst)
+    await fsp.writeFile(path.join(dst, 'meta.json'), JSON.stringify({ ...meta, key: to }, null, 2))
+  })
+
   const cacheDirInfo = () => ({ dir: cacheRoot(), isDefault: customCacheRoot === null, defaultDir: defaultCacheRoot() })
   ipcMain.handle('stems:cacheDir', () => cacheDirInfo())
 

@@ -20,6 +20,11 @@ export interface SavedLoop {
 
 /** Everything remembered per audio file, autosaved next to the app's user data. */
 export interface ProjectData {
+  /**
+   * The song this project is for, so it can be found again if the file is moved or renamed. Kept first
+   * in the saved file: only the start is read when looking for it.
+   */
+  source?: { name: string; path: string | null; duration: number }
   version: 1
   markers: Marker[]
   loops: SavedLoop[]
@@ -38,6 +43,12 @@ export interface ProjectData {
   noteTracks?: import('./transcription/types').NoteTrack[]
   /** Guitar tab lined up with the song (the file, its sync and bars placed by hand). */
   tab?: import('./tabs/useTabSync').TabProject
+}
+
+/** Whether a project holds anything the user made (rather than settings and automatic analysis). */
+export function hasUserWork(p: Partial<ProjectData> | null): boolean {
+  if (!p) return false
+  return !!(p.markers?.length || p.loops?.length || p.chordTrack?.edited || p.beatGrid?.edited || p.noteTracks?.length || p.tab)
 }
 
 export const SECTION_NAMES = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Breakdown', 'Outro']

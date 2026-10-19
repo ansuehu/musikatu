@@ -15,6 +15,10 @@ interface Props {
   onMix: (m: StemMix) => void
   /** Project key of the open song, to mark it in the cache list. */
   projectId: string | null
+  /** Opens a cached song from where its file is. */
+  onOpenSong: (entry: CacheEntry) => void
+  /** Asks where a cached song's file is now, opens it and moves its stems to it. */
+  onLocateSong: (entry: CacheEntry) => void
 }
 
 const SEGMENT_S = 7.8
@@ -51,7 +55,7 @@ function MiniWave({ peaks, color, dim }: { peaks: Peaks; color: string; dim: boo
   return <canvas ref={ref} className={`mini-wave ${dim ? 'dim' : ''}`} />
 }
 
-export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix, projectId }: Props) {
+export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix, projectId, onOpenSong, onLocateSong }: Props) {
   const { info, status, stems } = ctl
   const [exported, setExported] = useState<string | null>(null)
 
@@ -268,7 +272,7 @@ export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix, project
         </>
       )}
 
-      <CacheSection ctl={ctl} projectId={projectId} busy={busy} />
+      <CacheSection ctl={ctl} projectId={projectId} busy={busy} onOpen={onOpenSong} onLocate={onLocateSong} />
       <p className="muted small-text">{info.model.credit}</p>
     </div>
   )
@@ -322,7 +326,19 @@ function Progress({ status, onCancel }: { status: StemsController['status']; onC
 const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 
 /** Cached songs (with per-song delete) and the cache folder, which can be moved. */
-function CacheSection({ ctl, projectId, busy }: { ctl: StemsController; projectId: string | null; busy: boolean }) {
+function CacheSection({
+  ctl,
+  projectId,
+  busy,
+  onOpen,
+  onLocate,
+}: {
+  ctl: StemsController
+  projectId: string | null
+  busy: boolean
+  onOpen: (e: CacheEntry) => void
+  onLocate: (e: CacheEntry) => void
+}) {
   const { cache, cacheDirInfo: dir, cacheMove } = ctl
   const total = (cache ?? []).reduce((s, e) => s + e.bytes, 0)
   const moving = !!cacheMove
@@ -368,7 +384,15 @@ function CacheSection({ ctl, projectId, busy }: { ctl: StemsController; projectI
       {cache && cache.length > 0 && (
         <ul className="cache-list">
           {cache.map((e) => (
-            <CacheRow key={e.id} entry={e} current={!!projectId && e.key === projectId} disabled={busy || moving} onDelete={() => void ctl.deleteCached(e)} />
+            <CacheRow
+              key={e.id}
+              entry={e}
+              current={!!projectId && e.key === projectId}
+              disabled={busy || moving}
+              onDelete={() => void ctl.deleteCached(e)}
+              onOpen={() => onOpen(e)}
+              onLocate={() => onLocate(e)}
+            />
           ))}
         </ul>
       )}
@@ -391,11 +415,35 @@ function CacheSection({ ctl, projectId, busy }: { ctl: StemsController; projectI
   )
 }
 
-function CacheRow({ entry: e, current, disabled, onDelete }: { entry: CacheEntry; current: boolean; disabled: boolean; onDelete: () => void }) {
+function CacheRow({
+  entry: e,
+  current,
+  disabled,
+  onDelete,
+  onOpen,
+  onLocate,
+}: {
+  entry: CacheEntry
+  current: boolean
+  disabled: boolean
+  onDelete: () => void
+  onOpen: () => void
+  onLocate: () => void
+}) {
   const details = [fmtBytes(e.bytes), e.duration ? fmtSecs(e.duration) : null, fmtDate(e.createdAt), e.backend].filter(Boolean).join(' · ')
+  // a song can be opened from here when its file is where it was; one that was moved can be located
+  const openable = !current && e.complete && e.sourceExists === true && !!e.sourcePath
+  const locatable = e.complete && e.sourceExists === false
   return (
-    <li className={current ? 'current' : ''} title={e.sourcePath ?? undefined}>
-      <div className="cache-main">
+    <li className={`${current ? 'current' : ''} ${openable ? 'openable' : ''}`} title={e.sourcePath ?? undefined}>
+      <div
+        className="cache-main"
+        role={openable ? 'button' : undefined}
+        tabIndex={openable ? 0 : undefined}
+        onClick={openable && !disabled ? onOpen : undefined}
+        onKeyDown={openable && !disabled ? (ev) => (ev.key === 'Enter' || ev.key === ' ') && (ev.preventDefault(), onOpen()) : undefined}
+        title={openable ? `Open ${e.sourcePath}` : (e.sourcePath ?? undefined)}
+      >
         <span className="cache-name">{e.name}</span>
         <span className="muted small-text">
           {current && <span className="badge">this song</span>}
@@ -404,6 +452,11 @@ function CacheRow({ entry: e, current, disabled, onDelete }: { entry: CacheEntry
         {e.sourceExists === false && <span className="warning-text small-text">Original file not found at its old location</span>}
         {!e.complete && <span className="warning-text small-text">Incomplete or from an older model — safe to delete</span>}
       </div>
+      {locatable && (
+        <Btn className="small" disabled={disabled} onClick={onLocate} title="Show where the song's file is now: it opens with these stems and its project">
+          Locate…
+        </Btn>
+      )}
       <Btn className="small icon" disabled={disabled} onClick={onDelete} title={current ? 'Delete these stems (the song goes back to the original recording)' : 'Delete these stems'}>
         ×
       </Btn>

@@ -18,12 +18,13 @@ import { cellWidth, DEFAULT_LAYOUT, loadLayout, movePanel, openTools, panelsIn, 
 import { BottomDock, DragLayer, SidebarHost, ToolsButton, ToolsWindow } from './layout/LayoutUI'
 import { ShortcutsDialog, type Capture } from './components/ShortcutsDialog'
 import { Btn } from './components/Controls'
-import { loadProject, projectKey, saveProject, uid, type Marker, type MarkerKind, type ProjectData, type SavedLoop } from './project'
+import { hasUserWork, loadProject, projectKey, saveProject, uid, type Marker, type MarkerKind, type ProjectData, type SavedLoop } from './project'
+import { findMovedSong } from './stems/relink'
 import { comboFromEvent, loadBindings, loadGlobalEnabled, saveBindings, saveGlobalEnabled, toAccelerator, type Bindings } from './shortcuts'
 import { useMidi } from './midi'
 import { useStems } from './stems/useStems'
 import { StemsTab } from './components/StemsTab'
-import { analysisGains, analysisLabel, DEFAULT_STEM_MIX, STEM_NAMES, soloStem, stemGains, type StemMix } from './stems/types'
+import { analysisGains, analysisLabel, DEFAULT_STEM_MIX, STEM_MODEL_RATE, STEM_NAMES, soloStem, stemGains, type StemMix } from './stems/types'
 import { ChordsTab } from './components/ChordsTab'
 import { useChordTrack, type ChordTrack } from './analysis/useChordTrack'
 import { mergeShort, segmentAt, type Chord } from './analysis/chordTimeline'
@@ -241,10 +242,11 @@ export default function App() {
 
   useEffect(() => {
     if (!projectId) return
-    const data: ProjectData = { version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined, noteTracks, tab: tabProject ?? undefined }
+    const source = file ? { name: file.name, path: projectId.startsWith('path:') ? projectId.slice(5) : null, duration: file.buffer.duration } : undefined
+    const data: ProjectData = { source, version: 1, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack: chordTrack ?? undefined, beatGrid: beatGrid ?? undefined, noteTracks, tab: tabProject ?? undefined }
     const t = setTimeout(() => void saveProject(projectId, data), 400)
     return () => clearTimeout(t)
-  }, [projectId, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid, noteTracks, tabProject])
+  }, [projectId, file, markers, loops, eq, channelMode, speed, semitones, cents, stemMix, chordTrack, beatGrid, noteTracks, tabProject])
 
   // ---- view (zoom / scroll) ----
   const clampView = useCallback(
@@ -273,7 +275,8 @@ export default function App() {
 
   // ---- file loading ----
   const loadFile = useCallback(
-    async (name: string, data: ArrayBuffer, path: string | null) => {
+    /** `hint`: the old key of the song when the user pointed at its new location from the stem cache. */
+    async (name: string, data: ArrayBuffer, path: string | null, hint?: string) => {
       if (!engine) return
       engine.pause()
       setStatus({ kind: 'loading', text: `Decoding ${name}…` })
@@ -281,7 +284,23 @@ export default function App() {
         const buffer = await engine.decode(data)
         const peaks = buildPeaks(buffer)
         const key = projectKey(name, path, buffer.length)
-        const saved = await loadProject(key)
+        let saved = await loadProject(key)
+        // a song that was moved or renamed: bring its stems and project along to the new path
+        const api = window.api
+        let note: Status = null
+        if (api && path) {
+          const hasStems = await api.stems.has(key)
+          if (hasStems && hint) note = { kind: 'error', text: `“${name}” already has separated stems of its own, so the cached ones weren't moved to it.` }
+          else if (!hasStems) {
+            setStatus({ kind: 'loading', text: `Looking for ${name} in the stem cache…` })
+            const moved = await findMovedSong({ stems: api.stems, findMovedProjects: api.findMovedProjects, decode: (d) => engine.decode(d) }, buffer, name, STEM_MODEL_RATE, hint)
+            if (moved) {
+              if (moved.stems) await api.stems.relink(moved.from, key)
+              if (!hasUserWork(saved) && (await api.relinkProject(moved.from, key))) saved = await loadProject(key)
+              note = { kind: 'info', text: `Found this song's ${moved.stems ? 'stems and project' : 'project'} from where it was before (${moved.from.replace(/^path:/, '')})` }
+            } else if (hint) note = { kind: 'error', text: `“${name}” isn't the song those stems were made from, so they weren't moved to it.` }
+          }
+        }
         engine.load(buffer)
         setFile({ name, buffer, peaks })
         setSelection(null)
@@ -305,7 +324,7 @@ export default function App() {
         setSelectedNotes(new Set())
         setProjectId(key)
         const restored = (saved?.markers?.length ?? 0) + (saved?.loops?.length ?? 0)
-        setStatus(restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null)
+        setStatus(note ?? (restored ? { kind: 'info', text: `Restored ${saved?.markers?.length ?? 0} markers and ${saved?.loops?.length ?? 0} loops` } : null))
         document.title = `${name} — Musikatu`
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err)
@@ -971,6 +990,12 @@ if (m) engine?.seek(m.pos)
               mix={stemMix}
               onMix={setStemMix}
               projectId={projectId}
+              onOpenSong={(e) => {
+                if (e.sourcePath) window.api?.openPath(e.sourcePath).then(loadPayload, (err: unknown) => setStatus({ kind: 'error', text: `Couldn't open ${e.name}: ${String(err)}` }))
+              }}
+              onLocateSong={(e) => {
+                void window.api?.locateFile(e.sourcePath).then((p) => p && loadFile(p.name, toArrayBuffer(p.data), p.path, e.key ?? undefined))
+              }}
             />
         )
       case 'chords':

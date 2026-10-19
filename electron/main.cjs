@@ -1,10 +1,10 @@
 const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
-const crypto = require('node:crypto')
 const stems = require('./stems/service.cjs')
+const library = require('./library.cjs')
 
-const AUDIO_EXTENSIONS = ['wav', 'mp3', 'flac', 'aac', 'ogg', 'oga', 'opus', 'm4a', 'mp4', 'webm', 'aif', 'aiff']
+const { AUDIO_EXTENSIONS, readAudio } = library
 
 // The app used to be called "Earwork AI": on first start under the new name, adopt its data folder
 // (downloaded model, cached stems, per-song projects, preferences, shortcuts) instead of starting empty.
@@ -43,11 +43,6 @@ function findAudioArg(argv) {
   return argv
     .slice(app.isPackaged ? 1 : 2)
     .find((arg) => !arg.startsWith('-') && AUDIO_EXTENSIONS.includes(path.extname(arg).slice(1).toLowerCase()))
-}
-
-async function readAudio(filePath) {
-  const data = await fs.readFile(filePath)
-  return { name: path.basename(filePath), path: filePath, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) }
 }
 
 // ---- menu bar visibility (Linux / Windows; macOS has no per-window menu bar) ----
@@ -167,27 +162,6 @@ ipcMain.handle('file:initial', async () => {
   return file ? readAudio(path.resolve(file)) : null
 })
 
-// ---- per-file project data (markers, loops, EQ…) ----
-const projectsDir = () => path.join(app.getPath('userData'), 'projects')
-const projectPath = (key) => path.join(projectsDir(), crypto.createHash('sha1').update(String(key)).digest('hex') + '.json')
-
-ipcMain.handle('project:load', async (_e, key) => {
-  try {
-    return await fs.readFile(projectPath(key), 'utf8')
-  } catch {
-    return null
-  }
-})
-
-ipcMain.handle('project:save', async (_e, key, json) => {
-  if (typeof json !== 'string' || json.length > 5_000_000) return false
-  await fs.mkdir(projectsDir(), { recursive: true })
-  const file = projectPath(key)
-  await fs.writeFile(file + '.tmp', json, 'utf8')
-  await fs.rename(file + '.tmp', file)
-  return true
-})
-
 // ---- global hotkeys (work while another app — notation software, a DAW — has focus) ----
 ipcMain.handle('shortcuts:setGlobal', (_e, list) => {
   globalShortcut.unregisterAll()
@@ -224,6 +198,7 @@ app.on('open-file', (e, file) => {
 
 app.whenReady().then(() => {
   stems.register(() => win)
+  library.register(() => win)
   buildMenu()
   createWindow()
   app.on('activate', () => {

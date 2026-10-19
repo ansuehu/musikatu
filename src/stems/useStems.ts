@@ -118,7 +118,9 @@ export function useStems({ engine, buffer, projectId }: Args) {
     setNotice(null)
     setStatus({ kind: 'idle' })
     if (projectId) void attach(projectId, my)
-  }, [projectId, attach])
+    // the list marks the open song, and a moved song's entry may have just been moved to it
+    void refreshCache()
+  }, [projectId, attach, refreshCache])
 
   const separate = useCallback(async () => {
     if (!api || !buffer || !projectId || !info) return

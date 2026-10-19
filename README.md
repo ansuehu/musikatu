@@ -7,7 +7,7 @@ A desktop workbench for transcribing music by ear: slow it down, loop it, see wh
 ## Features
 
 - **Playback:** 5–200% speed without changing the pitch, ±12 semitones and cents of pitch shift, gapless loops, and a zoomable waveform.
-- **AI instrument splitter:** vocals, drums, bass, guitar, piano and other, with mute, solo and volume for each, on CPU or GPU. The spectrum and chord guess listen to what you hear, or to stems you choose.
+- **AI instrument splitter:** vocals, drums, bass, guitar, piano and other, with mute, solo and volume for each, on CPU or GPU. The spectrum and chord guess listen to what you hear, or to stems you choose. Separated songs are cached: open one by clicking it in the stem cache list. If you move or rename a song, its stems and project are found again when you open it (checked by ear: the stems must add up to the song), or press **Locate…** next to it in the list.
 - **Chords:**
   - live chord guess with guitar diagrams;
   - a whole-song chord chart you can edit;

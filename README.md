@@ -57,5 +57,5 @@ Tab files are read with [alphaTab](https://github.com/CoderLine/alphaTab) (MPL-2
 
 ## Branches
 
-- `ai-stems`: Musikatu (this version).
-- `main`: the classic version without AI, tag `v1-classic`.
+- `main`: Musikatu (this version).
+- The classic version without AI is tag `v1-classic`.

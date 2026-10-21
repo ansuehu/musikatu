@@ -14,6 +14,7 @@
     "test": "node --test \"test/*.test.ts\"",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
+    "dist:win": "npm run build && electron-builder --win zip nsis --x64",
     "install:linux": "npm run dist:dir && bash scripts/install-linux.sh"
   },
   "devDependencies": {
@@ -90,6 +91,15 @@
         "package.json",
         "!node_modules/onnxruntime-node/bin/**/linux/**",
         "!node_modules/onnxruntime-node/bin/**/darwin/**"
+      ],
+      "extraFiles": [
+        {
+          "from": "build/win-vcruntime",
+          "to": "resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/win32/x64",
+          "filter": [
+            "*.dll"
+          ]
+        }
       ],
       "icon": "build/icon.png"
     },

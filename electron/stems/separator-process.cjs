@@ -1,14 +1,22 @@
 // Runs in an Electron utility process: ONNX Runtime inference for stem separation,
 // isolated from the UI and audio threads. Talks to the main process via process.parentPort.
-const ort = require('onnxruntime-node')
 const fsp = require('node:fs/promises')
 const path = require('node:path')
 const os = require('node:os')
 const beatTracker = require('../beats/beat-tracker.cjs')
 const basicPitch = require('../transcription/basic-pitch.cjs')
 
-// Probing GPU backends that aren't installed is expected; keep those failures out of the log.
-ort.env.logLevel = 'fatal'
+// A native library that won't load (on Windows: a missing Visual C++ runtime DLL) must fail each job
+// with a readable message, not kill the process before it can answer.
+let ort = null
+let ortError = null
+try {
+  ort = require('onnxruntime-node')
+  // Probing GPU backends that aren't installed is expected; keep those failures out of the log.
+  ort.env.logLevel = 'fatal'
+} catch (err) {
+  ortError = err
+}
 
 const SAMPLE_RATE = 44100
 const SEGMENT = 343980 // 7.8 s, fixed by the exported graph
@@ -188,6 +196,7 @@ async function transcribe({ jobId, mono }) {
 process.parentPort.on('message', async (e) => {
   const msg = e.data
   try {
+    if (!ort) throw new Error(`The AI engine (ONNX Runtime) could not be loaded: ${String(ortError?.message ?? ortError).split('\n')[0]}`)
     if (msg.type === 'separate') await separate(msg)
     else if (msg.type === 'benchmark') await benchmark(msg)
     else if (msg.type === 'beats') await beats(msg)

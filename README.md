@@ -38,6 +38,7 @@ npm run dev                 # development
 npm run install:linux       # build and install for this user (launcher + `musikatu` command)
 npx electron-builder        # installers for this OS → release/
 npm run dist:win            # Windows x64: portable zip + installer (the installer needs Wine on Linux)
+npm run dist:mac            # macOS (Apple Silicon) zip, ad-hoc signed with rcodesign
 npm test
 ```
 

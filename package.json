@@ -15,6 +15,7 @@
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
     "dist:win": "npm run build && electron-builder --win zip nsis --x64",
+    "dist:mac": "bash scripts/dist-mac.sh",
     "install:linux": "npm run dist:dir && bash scripts/install-linux.sh"
   },
   "devDependencies": {
@@ -47,7 +48,8 @@
       "package.json",
       "!node_modules/onnxruntime-node/bin/**/*tensorrt*",
       "!node_modules/onnxruntime-node/bin/**/*providers_cuda*",
-      "!node_modules/onnxruntime-node/bin/**/arm64/**"
+      "!node_modules/onnxruntime-node/bin/**/linux/arm64/**",
+      "!node_modules/onnxruntime-node/bin/**/win32/arm64/**"
     ],
     "fileAssociations": [
       {

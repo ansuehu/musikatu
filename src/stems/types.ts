@@ -163,6 +163,8 @@ export interface StemsApi {
   cancel(): Promise<void>
   load(key: string): Promise<{ meta: StemsMeta; stems: { name: string; data: Uint8Array }[] } | null>
   exportStems(key: string, baseName: string): Promise<string | null>
+  /** Writes one WAV of the stems at these gains into a folder the user picks; float when it would clip. */
+  exportMix(key: string, baseName: string, gains: Record<StemName, number>): Promise<{ file: string; float: boolean } | null>
   clearCache(): Promise<number>
   cacheList(): Promise<CacheEntry[]>
   cacheDelete(id: string): Promise<void>

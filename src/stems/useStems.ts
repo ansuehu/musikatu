@@ -260,6 +260,7 @@ export function useStems({ engine, buffer, projectId }: Args) {
     moveCache,
     openCacheDir: () => void api?.openCacheDir(),
     exportStems: (baseName: string) => (projectId && api ? api.exportStems(projectId, baseName) : Promise.resolve(null)),
+    exportMix: (baseName: string, gains: Record<StemName, number>) => (projectId && api ? api.exportMix(projectId, baseName, gains) : Promise.resolve(null)),
   }
 }
 

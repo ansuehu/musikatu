@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { rangeOf, type Peaks } from '../waveform/peaks'
-import { DEFAULT_STEM_MIX, HARMONIC_STEMS, STEM_COLORS, STEM_LABELS, STEM_NAMES, type Device, type StemMix, type StemName } from '../stems/types'
+import { DEFAULT_STEM_MIX, HARMONIC_STEMS, STEM_COLORS, STEM_LABELS, STEM_NAMES, stemGains, type Device, type StemMix, type StemName } from '../stems/types'
 import type { StemsController } from '../stems/useStems'
 import { Btn, Slider } from './Controls'
 import type { CacheEntry } from '../stems/types'
@@ -260,6 +260,21 @@ export function StemsTab({ ctl, hasFile, fileName, duration, mix, onMix, project
               }}
             >
               Export WAVs…
+            </Btn>
+            <Btn
+              className="small"
+              title="One WAV of the stems mixed as you hear them: volume, mute and solo"
+              onClick={async () => {
+                try {
+                  const r = await ctl.exportMix(fileName?.replace(/\.[^.]+$/, '') ?? 'stems', stemGains(mix))
+                  setExported(r && (r.float ? `${r.file} (32-bit float WAV: the mix goes above full scale, so it's kept unclipped)` : r.file))
+                } catch (err) {
+                  setExported(null)
+                  alert(String(err instanceof Error ? err.message : err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
+                }
+              }}
+            >
+              Export mix…
             </Btn>
           </div>
           {exported && <p className="notice">Exported to {exported}</p>}

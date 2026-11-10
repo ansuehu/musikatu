@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
     cancel: () => ipcRenderer.invoke('stems:cancel'),
     load: (key) => ipcRenderer.invoke('stems:load', key),
     exportStems: (key, baseName) => ipcRenderer.invoke('stems:export', { key, baseName }),
+    exportMix: (key, baseName, gains) => ipcRenderer.invoke('stems:exportMix', { key, baseName, gains }),
     clearCache: () => ipcRenderer.invoke('stems:clearCache'),
     cacheList: () => ipcRenderer.invoke('stems:cacheList'),
     cacheDelete: (id) => ipcRenderer.invoke('stems:cacheDelete', id),

@@ -5,6 +5,7 @@ const path = require('node:path')
 const fsp = require('node:fs/promises')
 const crypto = require('node:crypto')
 const model = require('./model.cjs')
+const { mixStems } = require('./mix.cjs')
 
 const settingsPath = () => path.join(app.getPath('userData'), 'stems-settings.json')
 const defaultCacheRoot = () => path.join(app.getPath('userData'), 'stems')
@@ -258,6 +259,30 @@ function register(getWindow) {
     const safe = String(baseName || 'stems').replace(/[\\/:*?"<>|]/g, '_')
     for (const name of meta.sources) await fsp.copyFile(path.join(dir, `${name}.wav`), path.join(r.filePaths[0], `${safe} - ${name}.wav`))
     return r.filePaths[0]
+  })
+
+  /** One WAV of the stems at the given gains (what playback uses); never overwrites a file. */
+  ipcMain.handle('stems:exportMix', async (_e, { key, baseName, gains }) => {
+    const dir = cacheDir(key)
+    const meta = JSON.parse(await fsp.readFile(path.join(dir, 'meta.json'), 'utf8'))
+    const g = meta.sources.map((name) => gains?.[name])
+    if (!g.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0)) throw new Error('Invalid stem volumes')
+    if (g.every((v) => v === 0)) throw new Error('Nothing to export: every stem is muted or at 0%.')
+    const r = await dialog.showOpenDialog(getWindow(), { title: 'Export mix to folder', properties: ['openDirectory', 'createDirectory'] })
+    if (r.canceled || !r.filePaths[0]) return null
+    const used = meta.sources.filter((_, i) => g[i] !== 0)
+    const wavs = await Promise.all(used.map((name) => fsp.readFile(path.join(dir, `${name}.wav`))))
+    const { wav, float } = mixStems(wavs, g.filter((v) => v !== 0))
+    const safe = String(baseName || 'stems').replace(/[\\/:*?"<>|]/g, '_')
+    for (let i = 1; ; i++) {
+      const file = path.join(r.filePaths[0], `${safe} - mix${i === 1 ? '' : ` (${i})`}.wav`)
+      try {
+        await fsp.writeFile(file, wav, { flag: 'wx' }) // wx: fails instead of replacing an existing file
+        return { file, float }
+      } catch (err) {
+        if (err.code !== 'EEXIST') throw err
+      }
+    }
   })
 
   // ---- cache management ----
